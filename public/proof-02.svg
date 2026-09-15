@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">From £22k to £90k in three weeks</title><desc id="desc">Branded cover for a Paul Broome client results video.</desc>
+  <defs><linearGradient id="bg" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#071416"/><stop offset="1" stop-color="#172f31"/></linearGradient><linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#42b9b1"/><stop offset="1" stop-color="#a4fff0"/></linearGradient><pattern id="grid" width="56" height="56" patternUnits="userSpaceOnUse"><path d="M56 0H0V56" fill="none" stroke="#8fe7dc" stroke-opacity=".07"/></pattern></defs>
+  <rect width="1280" height="720" fill="url(#bg)"/><rect width="1280" height="720" fill="url(#grid)"/><path d="M70 510C260 500 310 430 445 450s190-178 330-135 220-160 425-190" fill="none" stroke="url(#line)" stroke-width="8" stroke-linecap="round"/><g fill="#9ffff0"><circle cx="70" cy="510" r="10"/><circle cx="445" cy="450" r="10"/><circle cx="775" cy="315" r="10"/><circle cx="1200" cy="125" r="10"/></g>
+  <text x="72" y="82" fill="#ecd499" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="5">PAUL BROOME · CLIENT RESULT 02</text>
+  <text x="72" y="238" fill="#f3fbf8" font-family="Georgia,serif" font-size="68" font-weight="600">From £22k/month</text><text x="72" y="318" fill="#f3fbf8" font-family="Georgia,serif" font-size="68" font-weight="600">to £90k in 3 weeks.</text>
+  <circle cx="640" cy="548" r="66" fill="#84eadc"/><path d="M624 514l56 34-56 34z" fill="#071719"/>
+  <text x="640" y="652" text-anchor="middle" fill="#d7e8e4" font-family="Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="3">PRESS PLAY</text>
+</svg>

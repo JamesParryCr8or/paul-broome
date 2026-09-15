@@ -17,6 +17,46 @@ type Contact = { name: string; company: string; phone: string; email: string; co
 
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
 const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778607882/pb_hero_dark_gold_paul_seated_de99e3be_za0tpd.webp';
+const proofCards = [
+  {
+    video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3c056bec7abdef10e8896.mp4',
+    poster: '/proof-01.svg',
+    title: 'My Recent Client Closed £140k In 17 Days.',
+    intro: 'Brandon has officially morphed into a sales machine. After just 6 hours of coaching, he’s hitting targets that most business owners struggle to reach in a year.',
+    subheading: 'This is what makes Paul different',
+    points: [
+      ['43 years of experience', 'From personal struggle to 60–75% close rates.'],
+      ['No theory', 'Just conversation psychology, control frameworks and ongoing accountability.'],
+      ['Fast implementation', 'As Brandon showed, you don’t need months. You need the right framework.'],
+    ],
+    close: 'If you’re a home improvement business owner ready for real coaching and proven results, let’s talk.',
+  },
+  {
+    video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3bc14f1bea6bbd35346b3.mp4',
+    poster: '/proof-02.svg',
+    title: 'From £22k/Month To £90k In Just 3 Weeks.',
+    intro: 'Ben was doing okay, but he was hitting a ceiling. He was stuck in the “standard” sales process—the one where you lose control of the conversation and wait for the customer to decide.',
+    subheading: 'Then he implemented the Conversation Control™ System',
+    points: [
+      ['The result', 'He didn’t just improve; he exploded. £90,000 in revenue in only 21 days.'],
+      ['The difference', 'Eliminating the hidden triggers that kill closes and mastering price anchoring.'],
+    ],
+    close: 'Stop losing 4–7 jobs a month. Start controlling the outcome.',
+  },
+  {
+    video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3c16d4e9962f567b243a5.mp4',
+    poster: '/proof-03.svg',
+    title: 'Price Is Never An Objection Where True Value Is Present.',
+    intro: 'If your customers are comparing you to “cheap” competitors, it’s because you haven’t made your value tangible, measurable and verifiable. In this video, Paul explains why the biggest players don’t struggle with price—and why you shouldn’t either.',
+    subheading: 'The 7-Step Process ensures you never defend your price again',
+    points: [
+      ['Control the conversation', 'Shift the focus from “how much” to “how well.”'],
+      ['Turn statements into questions', 'Make them the one justifying why they need the solution today.'],
+      ['Track and improve', 'Build permanent mastery that sticks.'],
+    ],
+    close: '“What can’t speak, can’t lie.” Follow the framework, and the numbers will follow you.',
+  },
+] as const;
 
 function track(event: string, detail: Record<string, unknown> = {}) {
   const win = window as typeof window & { dataLayer?: unknown[] };
@@ -67,6 +107,46 @@ function RevenueLeakGraphic() {
       <text className="diagram-label" x="57" y="46">PAID LEADS</text>
       <text className="diagram-label right" x="405" y="89" textAnchor="end">PROFITABLE SALES</text>
     </svg>
+  );
+}
+
+function SocialProof({ onStart }: { onStart: () => void }) {
+  return (
+    <section className="social-proof-section" aria-labelledby="proof-title">
+      <div className="proof-heading">
+        <p className="eyebrow centred"><span/> REAL RESULTS. REAL CLIENTS. REAL SALES WINS. <span/></p>
+        <h2 id="proof-title">Don’t take our word for it—see the results for yourself.</h2>
+        <p>Real lessons and outcomes from home improvement sales conversations.</p>
+      </div>
+      <div className="video-proof-list">
+        {proofCards.map((card, index) => (
+          <article className="video-proof-card" key={card.title}>
+            <div className="proof-video-shell">
+              <span className="proof-video-number">{String(index + 1).padStart(2, '0')}</span>
+              <video controls playsInline preload="metadata" poster={card.poster} aria-label={card.title}>
+                <source src={card.video} type="video/mp4" />
+                Your browser does not support embedded video.
+              </video>
+            </div>
+            <div className="proof-card-copy">
+              <p className="proof-kicker">CLIENT RESULT</p>
+              <h3>{card.title}</h3>
+              <p>{card.intro}</p>
+              <h4>{card.subheading}</h4>
+              <ul>
+                {card.points.map(([label, copy]) => <li key={label}><Check size={16}/><span><strong>{label}:</strong> {copy}</span></li>)}
+              </ul>
+              <p className="proof-close">{card.close}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="proof-footer">
+        <p>Trusted by conservatory roof installers, window fitters, extension builders, solar companies, landscapers and roofers.</p>
+        <button className="primary-cta" onClick={onStart}>Find my sales leak <ArrowRight size={19}/></button>
+        <small>Results vary. Individual outcomes depend on market conditions, implementation and individual circumstances. Testimonials reflect individual experiences and are not typical results.</small>
+      </div>
+    </section>
   );
 }
 
@@ -247,6 +327,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
       <header className="topbar"><Brand /><div className="header-trust"><ShieldCheck size={16}/><span>Private business assessment</span></div></header>
 
       {view === 'intro' && (
+        <>
         <section className="hero-screen">
           <div className="hero-copy">
             <div className="eyebrow"><span /> FOR UK HOME IMPROVEMENT BUSINESS OWNERS</div>
@@ -267,6 +348,8 @@ export default function Funnel({ preview }: { preview: boolean }) {
             <div className="calc-chip"><span>THE £660K EXAMPLE</span><strong>5 missed £11K jobs × 12 months</strong><small>Illustrative revenue leakage—not a promise of results.</small></div>
           </div>
         </section>
+        <SocialProof onStart={begin}/>
+        </>
       )}
 
       {view === 'name' && (
