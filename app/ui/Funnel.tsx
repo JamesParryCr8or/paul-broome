@@ -100,6 +100,10 @@ function Progress({ current, total }: { current: number; total: number }) {
   );
 }
 
+function isMultiSelect(question: (typeof questions)[number]) {
+  return 'multiple' in question && question.multiple === true;
+}
+
 export default function Funnel({ preview }: { preview: boolean }) {
   const [view, setView] = useState<View>('intro');
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -107,10 +111,12 @@ export default function Funnel({ preview }: { preview: boolean }) {
   const [contact, setContact] = useState<Contact>({ name: '', company: '', phone: '', email: '', consent: true, marketing: true, website: '' });
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
   const [error, setError] = useState('');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const submissionId = useRef('');
   const attribution = useRef<Record<string, string>>({});
+  const advanceTimer = useRef<number | null>(null);
   const totalSteps = questions.length + 3;
   const question = questions[questionIndex];
   const selected = answers[question?.id];
@@ -125,6 +131,10 @@ export default function Funnel({ preview }: { preview: boolean }) {
     attribution.current.landing_path = location.pathname;
     try { attribution.current.referrer = document.referrer ? new URL(document.referrer).origin : ''; } catch {}
     track('sales_leak_page_view');
+  }, []);
+
+  useEffect(() => () => {
+    if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
   }, []);
 
   useEffect(() => {
@@ -170,12 +180,20 @@ export default function Funnel({ preview }: { preview: boolean }) {
   }
 
   function selectAnswer(id: QuestionId, value: string) {
+    if (advancing) return;
     setAnswers(current => ({ ...current, [id]: value }));
     track('sales_leak_answer', { question: id, answer: value });
+    if (!isMultiSelect(question)) {
+      setAdvancing(true);
+      advanceTimer.current = window.setTimeout(() => {
+        advanceQuestion();
+        setAdvancing(false);
+        advanceTimer.current = null;
+      }, 180);
+    }
   }
 
-  async function continueQuiz() {
-    if (!selected) return;
+  function advanceQuestion() {
     setError('');
     if (questionIndex < questions.length - 1) {
       setQuestionIndex(current => current + 1);
@@ -184,6 +202,11 @@ export default function Funnel({ preview }: { preview: boolean }) {
     }
     setView('contact');
     track('sales_leak_questions_complete');
+  }
+
+  function continueQuiz() {
+    if (!selected) return;
+    advanceQuestion();
   }
 
   async function submit() {
@@ -312,7 +335,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
                   const Icon = iconMap[option.icon] || Check;
                   const isSelected = selected === option.value;
                   return (
-                    <button key={option.value} type="button" role="radio" aria-checked={isSelected} className={`option-card ${isSelected ? 'selected' : ''}`} onClick={() => selectAnswer(question.id, option.value)}>
+                    <button key={option.value} type="button" role="radio" aria-checked={isSelected} disabled={advancing} className={`option-card ${isSelected ? 'selected' : ''}`} onClick={() => selectAnswer(question.id, option.value)}>
                       <span className="option-icon"><Icon size={21} strokeWidth={1.8}/></span>
                       <span className="option-copy"><strong>{option.label}</strong>{'note' in option && option.note && <small>{option.note}</small>}</span>
                       <span className="option-check">{isSelected ? <Check size={17}/> : <ChevronRight size={17}/>}</span>
@@ -322,11 +345,12 @@ export default function Funnel({ preview }: { preview: boolean }) {
               </div>
               {error && <p className="form-error" role="alert">{error}</p>}
               <div className="question-actions">
-                <button className="back-link" onClick={back}><ArrowLeft size={16}/> Back</button>
-                <button className="primary-cta next-cta" onClick={continueQuiz} disabled={!selected || busy}>
-                  Continue
-                  {!busy && <ArrowRight size={19}/>} 
-                </button>
+                <button className="back-link" onClick={back} disabled={advancing}><ArrowLeft size={16}/> Back</button>
+                {isMultiSelect(question) ? (
+                  <button className="primary-cta next-cta" onClick={continueQuiz} disabled={!selected || busy}>Continue <ArrowRight size={19}/></button>
+                ) : (
+                  <span className="auto-advance-note">Choose an answer to continue</span>
+                )}
               </div>
             </div>
           </div>

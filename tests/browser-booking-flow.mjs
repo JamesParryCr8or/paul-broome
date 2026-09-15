@@ -24,7 +24,6 @@ await evaluate(`(() => { const i=document.querySelector('input[autocomplete="org
 await waitFor("document.querySelector('.question-panel')");
 for (let i=0;i<10;i++) {
   await evaluate("document.querySelector('.option-card').click()");
-  await evaluate("document.querySelector('.next-cta').click()");
   if (i<9) await waitFor(`document.querySelector('.question-number')?.textContent.includes('${String(i+2).padStart(2,'0')}')`);
 }
 await waitFor("document.querySelector('input[autocomplete=\"email\"]')");
