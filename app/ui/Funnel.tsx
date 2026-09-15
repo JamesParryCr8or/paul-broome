@@ -20,7 +20,7 @@ const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto
 const proofCards = [
   {
     video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3c056bec7abdef10e8896.mp4',
-    poster: '/proof-01.svg',
+    poster: '/proof-01.webp',
     title: 'My Recent Client Closed £140k In 17 Days.',
     intro: 'Brandon has officially morphed into a sales machine. After just 6 hours of coaching, he’s hitting targets that most business owners struggle to reach in a year.',
     subheading: 'This is what makes Paul different',
@@ -33,7 +33,7 @@ const proofCards = [
   },
   {
     video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3bc14f1bea6bbd35346b3.mp4',
-    poster: '/proof-02.svg',
+    poster: '/proof-02.webp',
     title: 'From £22k/Month To £90k In Just 3 Weeks.',
     intro: 'Ben was doing okay, but he was hitting a ceiling. He was stuck in the “standard” sales process—the one where you lose control of the conversation and wait for the customer to decide.',
     subheading: 'Then he implemented the Conversation Control™ System',
@@ -45,7 +45,7 @@ const proofCards = [
   },
   {
     video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3c16d4e9962f567b243a5.mp4',
-    poster: '/proof-03.svg',
+    poster: '/proof-03.webp',
     title: 'Price Is Never An Objection Where True Value Is Present.',
     intro: 'If your customers are comparing you to “cheap” competitors, it’s because you haven’t made your value tangible, measurable and verifiable. In this video, Paul explains why the biggest players don’t struggle with price—and why you shouldn’t either.',
     subheading: 'The 7-Step Process ensures you never defend your price again',
