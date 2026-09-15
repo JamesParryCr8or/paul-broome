@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { questions, type Answers, type QuestionId } from '@/lib/quiz';
 
-type View = 'intro' | 'details' | 'quiz' | 'complete';
+type View = 'intro' | 'name' | 'company' | 'quiz' | 'contact' | 'complete';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
 type Contact = { name: string; company: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
 
@@ -104,14 +104,14 @@ export default function Funnel({ preview }: { preview: boolean }) {
   const [view, setView] = useState<View>('intro');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Partial<Answers>>({});
-  const [contact, setContact] = useState<Contact>({ name: '', company: '', phone: '', email: '', consent: false, marketing: false, website: '' });
+  const [contact, setContact] = useState<Contact>({ name: '', company: '', phone: '', email: '', consent: true, marketing: true, website: '' });
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const submissionId = useRef('');
   const attribution = useRef<Record<string, string>>({});
-  const totalSteps = questions.length + 1;
+  const totalSteps = questions.length + 3;
   const question = questions[questionIndex];
   const selected = answers[question?.id];
 
@@ -144,15 +144,29 @@ export default function Funnel({ preview }: { preview: boolean }) {
   }, [answers.biggestCost]);
 
   function begin() {
-    setView('details');
+    setView('name');
     track('sales_leak_assessment_started');
   }
 
-  function saveDetails(event: FormEvent) {
+  function saveName(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setView('company');
+    track('sales_leak_name_step_complete');
+  }
+
+  function saveCompany(event: FormEvent) {
     event.preventDefault();
     setError('');
     setView('quiz');
+    track('sales_leak_company_step_complete');
+  }
+
+  async function saveContact(event: FormEvent) {
+    event.preventDefault();
+    setError('');
     track('sales_leak_contact_step_complete');
+    await submit();
   }
 
   function selectAnswer(id: QuestionId, value: string) {
@@ -168,7 +182,8 @@ export default function Funnel({ preview }: { preview: boolean }) {
       track('sales_leak_step_complete', { step: questionIndex + 1 });
       return;
     }
-    await submit();
+    setView('contact');
+    track('sales_leak_questions_complete');
   }
 
   async function submit() {
@@ -193,9 +208,14 @@ export default function Funnel({ preview }: { preview: boolean }) {
 
   function back() {
     setError('');
-    if (view === 'details') setView('intro');
-    else if (view === 'quiz' && questionIndex === 0) setView('details');
+    if (view === 'name') setView('intro');
+    else if (view === 'company') setView('name');
+    else if (view === 'quiz' && questionIndex === 0) setView('company');
     else if (view === 'quiz') setQuestionIndex(current => Math.max(0, current - 1));
+    else if (view === 'contact') {
+      setQuestionIndex(questions.length - 1);
+      setView('quiz');
+    }
   }
 
   return (
@@ -226,28 +246,46 @@ export default function Funnel({ preview }: { preview: boolean }) {
         </section>
       )}
 
-      {view === 'details' && (
+      {view === 'name' && (
         <section className="assessment-shell">
           <Progress current={1} total={totalSteps}/>
           <div className="split-card details-layout">
             <aside className="context-panel">
               <div className="mini-visual"><RevenueLeakGraphic /></div>
-              <p className="step-label">Before we continue</p>
-              <h2>Your result should reflect your business—not a generic benchmark.</h2>
-              <p>Tell us where to send your assessment result and Paul’s short training.</p>
+              <p className="step-label">First things first</p>
+              <h2>Your assessment starts with you.</h2>
+              <p>We’ll use your first name to personalise the experience as you uncover where sales may be slipping away.</p>
               <div className="secure-note"><LockKeyhole size={17}/><span>No spam. No hard sell. Just practical sales insight.</span></div>
             </aside>
             <div className="form-panel">
-              <p className="eyebrow compact"><span/> YOUR DETAILS</p>
-              <h1 ref={headingRef} tabIndex={-1}>Let’s personalise your sales leak assessment.</h1>
-              <form className="details-form" onSubmit={saveDetails}>
-                <label><span>Your name *</span><input required autoComplete="name" value={contact.name} onChange={e => setContact({...contact, name:e.target.value})} placeholder="e.g. David Smith" /></label>
-                <label><span>Company name *</span><input required autoComplete="organization" value={contact.company} onChange={e => setContact({...contact, company:e.target.value})} placeholder="e.g. Smith Roofing Ltd" /></label>
-                <label><span>Phone *</span><input required type="tel" minLength={10} maxLength={22} autoComplete="tel" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="Your best contact number" /></label>
-                <label><span>Email *</span><input required type="email" autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
-                <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
-                <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
-                <label className="check-row optional"><input type="checkbox" checked={contact.marketing} onChange={e => setContact({...contact, marketing:e.target.checked})}/><span>Send me occasional practical sales insights by email. Optional.</span></label>
+              <p className="eyebrow compact"><span/> ABOUT YOU</p>
+              <h1 ref={headingRef} tabIndex={-1}>What’s your first name?</h1>
+              <form className="details-form single-field-form" onSubmit={saveName}>
+                <label><span>First name *</span><input required minLength={2} autoFocus autoComplete="given-name" value={contact.name} onChange={e => setContact({...contact, name:e.target.value})} placeholder="e.g. David" /></label>
+                <button className="primary-cta" type="submit">Continue <ArrowRight size={19}/></button>
+              </form>
+              <button className="back-link" onClick={back}><ArrowLeft size={16}/> Back</button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {view === 'company' && (
+        <section className="assessment-shell">
+          <Progress current={2} total={totalSteps}/>
+          <div className="split-card details-layout">
+            <aside className="context-panel">
+              <div className="mini-visual"><RevenueLeakGraphic /></div>
+              <p className="step-label">Your business</p>
+              <h2>Every sales process has its own pressure points.</h2>
+              <p>Your company name helps make the assessment feel relevant to the business you’re building.</p>
+              <div className="secure-note"><Building2 size={17}/><span>Built for UK home improvement business owners.</span></div>
+            </aside>
+            <div className="form-panel">
+              <p className="eyebrow compact"><span/> ABOUT YOUR BUSINESS</p>
+              <h1 ref={headingRef} tabIndex={-1}>{firstName ? `Thanks, ${firstName}. What’s your company called?` : 'What’s your company called?'}</h1>
+              <form className="details-form single-field-form" onSubmit={saveCompany}>
+                <label><span>Company name *</span><input required minLength={2} autoFocus autoComplete="organization" value={contact.company} onChange={e => setContact({...contact, company:e.target.value})} placeholder="e.g. Smith Roofing Ltd" /></label>
                 <button className="primary-cta" type="submit">Start the assessment <ArrowRight size={19}/></button>
               </form>
               <button className="back-link" onClick={back}><ArrowLeft size={16}/> Back</button>
@@ -258,7 +296,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
 
       {view === 'quiz' && question && (
         <section className="assessment-shell">
-          <Progress current={questionIndex + 2} total={totalSteps}/>
+          <Progress current={questionIndex + 3} total={totalSteps}/>
           <div className="split-card quiz-layout">
             <aside className="visual-panel">
               <div className="question-number">{String(questionIndex + 1).padStart(2, '0')}<span>/ {questions.length}</span></div>
@@ -286,10 +324,39 @@ export default function Funnel({ preview }: { preview: boolean }) {
               <div className="question-actions">
                 <button className="back-link" onClick={back}><ArrowLeft size={16}/> Back</button>
                 <button className="primary-cta next-cta" onClick={continueQuiz} disabled={!selected || busy}>
-                  {questionIndex === questions.length - 1 ? (busy ? 'Preparing your result…' : 'YES! I WANT TO FIX MY CLOSE RATE') : 'Continue'}
+                  Continue
                   {!busy && <ArrowRight size={19}/>} 
                 </button>
               </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {view === 'contact' && (
+        <section className="assessment-shell">
+          <Progress current={totalSteps} total={totalSteps}/>
+          <div className="split-card details-layout">
+            <aside className="context-panel">
+              <div className="mini-visual"><RevenueLeakGraphic /></div>
+              <p className="step-label">Your result is ready</p>
+              <h2>Where should we send your sales leak snapshot?</h2>
+              <p>Add your best email and phone number to unlock your result and Paul’s short training.</p>
+              <div className="secure-note"><LockKeyhole size={17}/><span>Your details stay private and secure.</span></div>
+            </aside>
+            <div className="form-panel">
+              <p className="eyebrow compact"><span/> FINAL STEP</p>
+              <h1 ref={headingRef} tabIndex={-1}>See where {contact.company || 'your business'} is losing sales.</h1>
+              <form className="details-form" onSubmit={saveContact}>
+                <label><span>Email *</span><input required type="email" autoFocus autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
+                <label><span>Phone *</span><input required type="tel" minLength={10} maxLength={22} autoComplete="tel" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="Your best contact number" /></label>
+                <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
+                <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
+                <label className="check-row optional"><input type="checkbox" checked={contact.marketing} onChange={e => setContact({...contact, marketing:e.target.checked})}/><span>Send me occasional practical sales insights by email. Optional.</span></label>
+                {error && <p className="form-error" role="alert">{error}</p>}
+                <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Preparing your result…' : 'YES! I WANT TO FIX MY CLOSE RATE'}{!busy && <ArrowRight size={19}/>}</button>
+              </form>
+              <button className="back-link" onClick={back} disabled={busy}><ArrowLeft size={16}/> Back</button>
             </div>
           </div>
         </section>
