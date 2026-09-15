@@ -1,0 +1,5 @@
+/* Accessibility refinements kept separate from the visual system. */
+@media (forced-colors: active) {
+  .answer,.primary-cta,.squeeze-card { border:1px solid ButtonText; }
+}
+
