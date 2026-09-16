@@ -1,6 +1,7 @@
 import postgres from 'postgres';
 import { assess, label, type Lead, type Answers, type QuestionId } from './quiz';
 import { diagnosticFieldLabels, diagnosticValue, type DiagnosticAnswers, type DiagnosticSave } from './diagnostic';
+import { assessmentGhlFields, diagnosticGhlFields } from './ghl-fields';
 let client: ReturnType<typeof postgres> | undefined;
 export function db() { if (!process.env.DATABASE_URL)
     throw new Error('Database is not configured'); return client ||= postgres(process.env.DATABASE_URL, { max: 1, idle_timeout: 20, connect_timeout: 10, prepare: false }); }
@@ -38,6 +39,17 @@ export async function sendGhlWebhook(event: string, payload: Record<string, unkn
     if (!response.ok) throw new Error(`GHL webhook status ${response.status}`);
     return true;
 }
+function ghlToken() { return process.env.GHL_PRIVATE_ACCESS_TOKEN || process.env.GHL_PRIVATE_INTEGRATION_KEY; }
+export function hasGhlDirectSync() { return Boolean(ghlToken() && process.env.GHL_LOCATION_ID); }
+function customFields(values: Record<string,string>, fields: Record<string,string>) { return Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key,id]) => ({id,fieldValue:values[key]})); }
+async function upsertGhl(name: string, email: string, phone: string, company: string | undefined, source: string, values: Record<string,string>, fields: Record<string,string>) {
+    const token = ghlToken(); if (!token || !process.env.GHL_LOCATION_ID) throw new Error('CRM not configured');
+    const names = name.trim().split(/\s+/).filter(Boolean);
+    const response = await fetch('https://services.leadconnectorhq.com/contacts/upsert',{method:'POST',headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},body:JSON.stringify({locationId:process.env.GHL_LOCATION_ID,firstName:names[0]||undefined,lastName:names.slice(1).join(' ')||undefined,email:email||undefined,phone:phone||undefined,companyName:company||undefined,source,customFields:customFields(values,fields)}),signal:AbortSignal.timeout(12000)});
+    if (!response.ok) throw new Error(`CRM status ${response.status}`);
+}
+export async function syncLeadDirect(lead: Lead) { const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)])); await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields); }
+export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) { if (!diagnostic.email&&!diagnostic.phone) return; const values=Object.fromEntries(Object.entries(diagnostic.answers as DiagnosticAnswers).map(([key,value])=>[key,diagnosticValue(value)])); await upsertGhl(diagnostic.fullName,diagnostic.email,diagnostic.phone,undefined,'Paul Broome Pre-Call Diagnostic',values,diagnosticGhlFields); }
 export async function syncLead(id: string) {
     const sql = db();
     // Atomic lease prevents concurrent retries from sending the same submission at once.

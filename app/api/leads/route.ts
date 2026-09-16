@@ -1,7 +1,7 @@
 import { after } from 'next/server';
 import { createHash } from 'node:crypto';
 import { leadSchema, assess, type Answers } from '@/lib/quiz';
-import { db, diagnosticResumeUrl, publicNextStep, sendGhlWebhook, syncLead } from '@/lib/server';
+import { db, diagnosticResumeUrl, hasGhlDirectSync, publicNextStep, sendGhlWebhook, syncLead, syncLeadDirect } from '@/lib/server';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 export async function POST(request: Request) {
@@ -57,7 +57,8 @@ export async function POST(request: Request) {
         return Response.json({ preview: true, ...assessment, nextStepUrl: publicNextStep() });
     const hasDatabase = Boolean(process.env.DATABASE_URL);
     const hasWebhook = Boolean(process.env.GHL_WEBHOOK);
-    if (!hasDatabase && !hasWebhook)
+    const hasDirectSync = hasGhlDirectSync();
+    if (!hasDatabase && !hasWebhook && !hasDirectSync)
         return Response.json({ error: 'Enquiries are temporarily unavailable. Please try again shortly.' }, { status: 503 });
     try {
         let savedToDatabase = false;
@@ -79,13 +80,17 @@ export async function POST(request: Request) {
         }
         const appOrigin = process.env.APP_ORIGIN || new URL(request.url).origin;
         const resumeUrl = diagnosticResumeUrl(appOrigin, lead);
-        if (hasWebhook) await sendGhlWebhook('assessment.completed', {
+        const deliveries = await Promise.allSettled([
+          hasWebhook ? sendGhlWebhook('assessment.completed', {
             submission_id:lead.id,status:'completed',first_name:lead.name.trim().split(/\s+/)[0],full_name:lead.name,
             company:lead.company,email:lead.email,phone:lead.phone,marketing_consent:lead.marketing,
             enquiry_consent:lead.consent,lead_score:assessment.score,lead_tier:assessment.tier,lead_route:assessment.route,
             answers:lead.answers,attribution:lead.attribution,abandonment_url:resumeUrl,resume_url:resumeUrl,
-        });
-        if (savedToDatabase && process.env.GHL_PRIVATE_INTEGRATION_KEY && process.env.GHL_LOCATION_ID) after(() => syncLead(lead.id));
+          }) : Promise.resolve(),
+          hasDirectSync ? syncLeadDirect(lead) : Promise.resolve(),
+        ]);
+        if (deliveries.every(result => result.status === 'rejected')) throw new Error('All capture destinations failed');
+        if (savedToDatabase && hasDirectSync) after(() => syncLead(lead.id));
         return Response.json({ preview: false, ...assessment, nextStepUrl: publicNextStep() });
     }
     catch {
