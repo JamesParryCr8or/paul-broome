@@ -17,6 +17,7 @@ type Contact = { name: string; company: string; phone: string; email: string; co
 
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
 const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778607882/pb_hero_dark_gold_paul_seated_de99e3be_za0tpd.webp';
+const LEAD_ID_KEY = 'paul_broome_submission_id';
 const proofCards = [
   {
     video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3c056bec7abdef10e8896.mp4',
@@ -202,8 +203,13 @@ export default function Funnel({ preview }: { preview: boolean }) {
   const selected = answers[question?.id];
 
   useEffect(() => {
-    submissionId.current = crypto.randomUUID();
     const params = new URLSearchParams(location.search);
+    const candidate = params.get('pb_submission_id') || params.get('submission_id') || '';
+    const validCandidate = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate) ? candidate : '';
+    try {
+      submissionId.current = validCandidate || localStorage.getItem(LEAD_ID_KEY) || crypto.randomUUID();
+      localStorage.setItem(LEAD_ID_KEY, submissionId.current);
+    } catch { submissionId.current = validCandidate || crypto.randomUUID(); }
     for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id', 'fbclid', 'gclid']) {
       const value = params.get(key);
       if (value) attribution.current[key] = value.slice(0, 500);
@@ -301,12 +307,17 @@ export default function Funnel({ preview }: { preview: boolean }) {
       setResult(data);
       setView('complete');
       track(data.preview ? 'sales_leak_preview_complete' : 'sales_leak_submitted', { tier: data.tier, event_id: submissionId.current });
-      if (data.nextStepUrl && !data.preview) location.assign(data.nextStepUrl);
+      if (data.nextStepUrl && !data.preview) location.assign(withSubmissionId(data.nextStepUrl));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Something went wrong. Please try again.');
     } finally {
       setBusy(false);
     }
+  }
+
+  function withSubmissionId(url: string) {
+    try { const next = new URL(url); next.searchParams.set('pb_submission_id', submissionId.current); return next.toString(); }
+    catch { return url; }
   }
 
   function back() {
@@ -481,7 +492,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
               <div><span>YOUR NEXT FOCUS</span><strong>Build certainty before price enters the conversation.</strong><p>Paul’s short training shows where control is usually lost and what to change first.</p></div>
             </div>
             {result.nextStepUrl ? (
-              <a className="primary-cta complete-cta" href={result.nextStepUrl}>Watch the free training <ArrowRight size={19}/></a>
+              <a className="primary-cta complete-cta" href={withSubmissionId(result.nextStepUrl)}>Watch the free training <ArrowRight size={19}/></a>
             ) : (
               <div className="integration-placeholder"><Sparkles size={19}/><div><strong>Ready for your GHL handoff</strong><span>Add <code>NEXT_STEP_URL</code> when the training page is connected.</span></div></div>
             )}

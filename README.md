@@ -26,6 +26,19 @@ node node_modules/next/dist/bin/next build
 2. Contact details: name, company, phone and email.
 3. Ten one-at-a-time assessment questions covering spend, sector, trading history, appointments, team, conversion, leakage, order value, desired outcome and readiness.
 4. Completion insight and optional redirect to the training, booking calendar or next GHL funnel step.
+5. After booking, `/confirmed` presents a video-led pre-call diagnostic and saves each answer as the prospect progresses.
+
+## Post-booking diagnostic
+
+Configure the calendar confirmation redirect to this app's `/confirmed` route. The recommended URL is:
+
+```text
+https://YOUR-DOMAIN/confirmed?pb_submission_id={{custom_values.pb_submission_id}}&first_name={{contact.first_name}}&last_name={{contact.last_name}}&email={{contact.email}}&phone={{contact.phone}}
+```
+
+Use the equivalent merge-field syntax supported by the live GoHighLevel calendar. The first assessment automatically adds `pb_submission_id` to `NEXT_STEP_URL`; the booking funnel must preserve that value when redirecting back. The confirmation page also accepts `submission_id`, `lead_id` or `uuid` as fallbacks and tolerates the older malformed `?notrack=true?first_name=...` URL format.
+
+The diagnostic stores its draft locally and autosaves a versioned full snapshot after each change. A `pagehide` keepalive save covers tab closes and navigation. The API only accepts newer revisions, preventing an older slow request from overwriting newer answers. Completed diagnostics receive the same UUID as the original lead.
 
 The £660K figure is explicitly framed as an illustrative calculation: five missed £11K jobs per month across twelve months. It is not presented as a typical result or earnings promise.
 
@@ -43,6 +56,8 @@ Copy `.env.example` into the appropriate environment and configure:
 - `GHL_PRIVATE_INTEGRATION_KEY`
 - `GHL_LOCATION_ID`
 - `GHL_CUSTOM_FIELDS`
+- `GHL_DIAGNOSTIC_FIELDS`
+- `GHL_USER_ID` (optional; adds a completed diagnostic as a contact note)
 - `CRM_RETRY_SECRET`
 - `APP_ORIGIN`
 - `NEXT_STEP_URL`
@@ -61,6 +76,10 @@ The lead is upserted with name, company, email and phone. Create and map custom 
 ```json
 {"lead_score":"FIELD_ID","closeRate":"FIELD_ID","biggestCost":"FIELD_ID"}
 ```
+
+`GHL_DIAGNOSTIC_FIELDS` follows the same format. Supported keys are `diagnostic_submission_id`, `diagnostic_status`, `diagnostic_current_step`, `diagnostic_updated_at`, `diagnostic_completed_at`, `offerAndAov`, `monthlyRevenue`, `qualifiedLeads`, `closeRate`, `lostReason`, `lostReasonOther`, `lostDeals`, `lostValue`, `structuredProcess`, `coachingInvestment`, `coachingDetails`, `frustration`, `whyNow`, `consequences`, `soleDecisionMaker` and `readyToInvest`.
+
+Partial saves update the contact and progress fields, enabling an abandonment workflow in GoHighLevel. A simple workflow can wait 30–60 minutes, check that `diagnostic_status` is not `completed`, then send the prospect back to the same dynamic `/confirmed` URL. When `GHL_USER_ID` is configured, the finished answers are also written to a single titled contact note for the sales call.
 
 ## Scoring
 

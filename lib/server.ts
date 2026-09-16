@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 import { assess, label, type Lead, type Answers, type QuestionId } from './quiz';
+import { diagnosticFieldLabels, diagnosticValue, type DiagnosticAnswers, type DiagnosticSave } from './diagnostic';
 let client: ReturnType<typeof postgres> | undefined;
 export function db() { if (!process.env.DATABASE_URL)
     throw new Error('Database is not configured'); return client ||= postgres(process.env.DATABASE_URL, { max: 1, idle_timeout: 20, connect_timeout: 10, prepare: false }); }
@@ -38,5 +39,60 @@ export async function syncLead(id: string) {
     }
     catch (e) {
         await sql `UPDATE funnel_leads SET sync_status='failed',last_sync_error=${e instanceof Error ? e.message : 'CRM sync failed'} WHERE id=${id}`;
+    }
+}
+
+export async function syncDiagnostic(id: string) {
+    const sql = db();
+    const rows = await sql `UPDATE diagnostic_sessions SET sync_status='processing',sync_started_at=now(),sync_attempts=sync_attempts+1 WHERE id=${id} AND (sync_status IN ('pending','failed') OR (sync_status='processing' AND sync_started_at < now()-interval '5 minutes')) RETURNING *`;
+    if (!rows.length)
+        return;
+    const row = rows[0];
+    try {
+        if (!process.env.GHL_PRIVATE_INTEGRATION_KEY || !process.env.GHL_LOCATION_ID)
+            throw new Error('CRM not configured');
+        const diagnostic = row.payload as DiagnosticSave;
+        if (!diagnostic.email && !diagnostic.phone) {
+            await sql `UPDATE diagnostic_sessions SET sync_status='awaiting_identity',last_sync_error=null WHERE id=${id}`;
+            return;
+        }
+        const answers = diagnostic.answers as DiagnosticAnswers;
+        const fields: Record<string,string> = JSON.parse(process.env.GHL_DIAGNOSTIC_FIELDS || '{}');
+        const values: Record<string,string> = {
+            diagnostic_submission_id:id,
+            diagnostic_status:row.status,
+            diagnostic_current_step:String(row.current_step),
+            diagnostic_updated_at:new Date(row.updated_at).toISOString(),
+            diagnostic_completed_at:row.completed_at ? new Date(row.completed_at).toISOString() : '',
+            ...Object.fromEntries(Object.entries(answers).map(([key,value]) => [key,diagnosticValue(value)])),
+        };
+        const customFields = Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key,fieldId]) => ({id:fieldId,field_value:values[key]}));
+        const names = diagnostic.fullName.trim().split(/\s+/);
+        const response = await fetch('https://services.leadconnectorhq.com/contacts/upsert', {
+            method:'POST',
+            headers:{Authorization:`Bearer ${process.env.GHL_PRIVATE_INTEGRATION_KEY}`,Version:'2021-07-28','Content-Type':'application/json'},
+            body:JSON.stringify({locationId:process.env.GHL_LOCATION_ID,firstName:names[0]||undefined,lastName:names.slice(1).join(' ')||undefined,email:diagnostic.email||undefined,phone:diagnostic.phone||undefined,source:'Paul Broome Pre-Call Diagnostic',customFields}),
+            signal:AbortSignal.timeout(12000),
+        });
+        if (!response.ok) throw new Error(`CRM status ${response.status}`);
+        const data = await response.json();
+        const contactId = data.contact?.id;
+        if (!contactId) throw new Error('CRM missing contact ID');
+        let noteId = row.ghl_note_id as string | null;
+        if (row.status === 'completed' && process.env.GHL_USER_ID && !noteId) {
+            const lines = Object.entries(answers).filter(([,value]) => value).map(([key,value]) => `${diagnosticFieldLabels[key as keyof DiagnosticAnswers] || key}: ${diagnosticValue(value)}`);
+            const noteResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
+                method:'POST',
+                headers:{Authorization:`Bearer ${process.env.GHL_PRIVATE_INTEGRATION_KEY}`,Version:'v3','Content-Type':'application/json'},
+                body:JSON.stringify({userId:process.env.GHL_USER_ID,title:'Pre-call sales diagnostic',body:`Completed pre-call diagnostic\n\n${lines.join('\n')}`,color:'#72E3D6',pinned:false}),
+                signal:AbortSignal.timeout(12000),
+            });
+            if (!noteResponse.ok) throw new Error(`CRM note status ${noteResponse.status}`);
+            noteId = (await noteResponse.json()).note?.id || null;
+        }
+        await sql `UPDATE diagnostic_sessions SET sync_status='synced',ghl_contact_id=${contactId},ghl_note_id=${noteId},synced_at=now(),last_sync_error=null WHERE id=${id}`;
+    }
+    catch (e) {
+        await sql `UPDATE diagnostic_sessions SET sync_status='failed',last_sync_error=${e instanceof Error?e.message:'CRM sync failed'} WHERE id=${id}`;
     }
 }
