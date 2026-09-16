@@ -23,7 +23,7 @@ const BOOKING_CALENDAR_URL = 'https://paul.7stepstosalesmastery.com/widget/booki
 const BOOKING_EMBED_SCRIPT = 'https://paul.7stepstosalesmastery.com/js/form_embed.js';
 const proofCards = [
   {
-    video: '/videos/proof-01.mp4',
+    video: 'https://paul-broome-d3bzfn07a-james-cr8orcouks-projects.vercel.app/videos/proof-01.mp4',
     poster: '/proof-01.webp',
     title: 'My Recent Client Closed £140k In 17 Days.',
     intro: 'Brandon has officially morphed into a sales machine. After just 6 hours of coaching, he’s hitting targets that most business owners struggle to reach in a year.',
@@ -36,7 +36,7 @@ const proofCards = [
     close: 'If you’re a home improvement business owner ready for real coaching and proven results, let’s talk.',
   },
   {
-    video: '/videos/proof-02.mp4',
+    video: 'https://paul-broome-d3bzfn07a-james-cr8orcouks-projects.vercel.app/videos/proof-02.mp4',
     poster: '/proof-02.webp',
     title: 'From £22k/Month To £90k In Just 3 Weeks.',
     intro: 'Ben was doing okay, but he was hitting a ceiling. He was stuck in the “standard” sales process—the one where you lose control of the conversation and wait for the customer to decide.',
@@ -48,7 +48,7 @@ const proofCards = [
     close: 'Stop losing 4–7 jobs a month. Start controlling the outcome.',
   },
   {
-    video: '/videos/proof-03.mp4',
+    video: 'https://paul-broome-d3bzfn07a-james-cr8orcouks-projects.vercel.app/videos/proof-03.mp4',
     poster: '/proof-03.webp',
     title: 'Price Is Never An Objection Where True Value Is Present.',
     intro: 'If your customers are comparing you to “cheap” competitors, it’s because you haven’t made your value tangible, measurable and verifiable. In this video, Paul explains why the biggest players don’t struggle with price—and why you shouldn’t either.',
