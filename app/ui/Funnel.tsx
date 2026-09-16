@@ -1,23 +1,25 @@
 'use client';
 
 import Image from 'next/image';
+import Script from 'next/script';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft, ArrowRight, BarChart3, Building2, CalendarDays, Check, ChevronRight,
-  PoundSterling, Clock3, Compass, DoorOpen, Gauge, Ghost, Grid2X2, Hammer,
+  PoundSterling, Clock3, Compass, DoorOpen, ExternalLink, Gauge, Ghost, Globe2, Grid2X2, Hammer,
   HardHat, Home, Layers3, LockKeyhole, MessageSquareQuote, Percent, Rocket, Search,
-  ShieldCheck, Sparkles, Sun, Target, TrendingUp, TreePine, UserRound, UsersRound,
+  ShieldCheck, Sparkles, Sun, Target, TrendingUp, TreePine, UserRound, UsersRound, Video,
   Wrench, type LucideIcon,
 } from 'lucide-react';
 import { questions, type Answers, type QuestionId } from '@/lib/quiz';
 
-type View = 'intro' | 'name' | 'company' | 'quiz' | 'contact' | 'complete';
+type View = 'intro' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
 type Contact = { name: string; company: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
 
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
 const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778607882/pb_hero_dark_gold_paul_seated_de99e3be_za0tpd.webp';
 const LEAD_ID_KEY = 'paul_broome_submission_id';
+const BOOKING_CALENDAR_URL = 'https://api.leadconnectorhq.com/widget/booking/bkrsE26sQmcKSfOkvrys';
 const proofCards = [
   {
     video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3c056bec7abdef10e8896.mp4',
@@ -185,6 +187,10 @@ function isMultiSelect(question: (typeof questions)[number]) {
   return 'multiple' in question && question.multiple === true;
 }
 
+function CalendarFact({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: string }) {
+  return <div><Icon size={22}/><span><strong>{title}</strong>{children}</span></div>;
+}
+
 export default function Funnel({ preview }: { preview: boolean }) {
   const [view, setView] = useState<View>('intro');
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -195,6 +201,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
   const [advancing, setAdvancing] = useState(false);
   const [error, setError] = useState('');
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const calendarFrameRef = useRef<HTMLIFrameElement>(null);
   const submissionId = useRef('');
   const attribution = useRef<Record<string, string>>({});
   const advanceTimer = useRef<number | null>(null);
@@ -230,6 +237,43 @@ export default function Funnel({ preview }: { preview: boolean }) {
   }, [view, questionIndex]);
 
   const firstName = contact.name.trim().split(/\s+/)[0];
+  const lastName = contact.name.trim().split(/\s+/).slice(1).join(' ');
+  const confirmedUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      pb_submission_id: submissionId.current,
+      first_name: firstName,
+      last_name: lastName,
+      email: contact.email,
+      phone: contact.phone,
+      company: contact.company,
+    });
+    return `/confirmed?${params.toString()}`;
+  }, [contact.company, contact.email, contact.phone, firstName, lastName, view]);
+  const calendarUrl = useMemo(() => {
+    const next = new URL(BOOKING_CALENDAR_URL);
+    next.searchParams.set('first_name', firstName);
+    next.searchParams.set('last_name', lastName);
+    next.searchParams.set('email', contact.email);
+    next.searchParams.set('phone', contact.phone);
+    next.searchParams.set('company', contact.company);
+    next.searchParams.set('pb_submission_id', submissionId.current);
+    return next.toString();
+  }, [contact.company, contact.email, contact.phone, firstName, lastName, view]);
+
+  useEffect(() => {
+    if (view !== 'booking') return;
+    const handleCalendarMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://api.leadconnectorhq.com') return;
+      const payload = typeof event.data === 'string' ? event.data : JSON.stringify(event.data ?? '');
+      if (/(appointment|booking).*(booked|complete|confirmed|success)/i.test(payload)) {
+        track('sales_leak_call_booked', { event_id: submissionId.current });
+        location.assign(confirmedUrl);
+      }
+    };
+    window.addEventListener('message', handleCalendarMessage);
+    return () => window.removeEventListener('message', handleCalendarMessage);
+  }, [confirmedUrl, view]);
+
   const insight = useMemo(() => {
     const pain = answers.biggestCost;
     if (pain === 'ghosting') return 'The quote is not the end of the conversation. It is where earlier uncertainty becomes visible.';
@@ -305,9 +349,8 @@ export default function Funnel({ preview }: { preview: boolean }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'We couldn’t prepare your result. Please try again.');
       setResult(data);
-      setView('complete');
+      setView('booking');
       track(data.preview ? 'sales_leak_preview_complete' : 'sales_leak_submitted', { tier: data.tier, event_id: submissionId.current });
-      if (data.nextStepUrl && !data.preview) location.assign(withSubmissionId(data.nextStepUrl));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Something went wrong. Please try again.');
     } finally {
@@ -315,9 +358,13 @@ export default function Funnel({ preview }: { preview: boolean }) {
     }
   }
 
-  function withSubmissionId(url: string) {
-    try { const next = new URL(url); next.searchParams.set('pb_submission_id', submissionId.current); return next.toString(); }
-    catch { return url; }
+  function handleCalendarLoad() {
+    try {
+      const framePath = calendarFrameRef.current?.contentWindow?.location.pathname;
+      if (framePath === '/confirmed') location.assign(confirmedUrl);
+    } catch {
+      // The calendar is cross-origin until its confirmation redirect reaches this site.
+    }
   }
 
   function back() {
@@ -480,23 +527,39 @@ export default function Funnel({ preview }: { preview: boolean }) {
         </section>
       )}
 
-      {view === 'complete' && result && (
-        <section className="complete-screen">
-          <div className="complete-card">
-            <div className="complete-mark"><Check size={30}/></div>
-            <p className="eyebrow compact centred"><span/> ASSESSMENT COMPLETE</p>
-            <h1 ref={headingRef} tabIndex={-1}>{firstName ? `${firstName}, your` : 'Your'} sales leak snapshot is ready.</h1>
-            <p className="complete-lead">{insight}</p>
-            <div className="result-panel">
-              <div className="result-icon"><Target size={29}/></div>
-              <div><span>YOUR NEXT FOCUS</span><strong>Build certainty before price enters the conversation.</strong><p>Paul’s short training shows where control is usually lost and what to change first.</p></div>
+      {view === 'booking' && result && (
+        <section className="booking-shell" aria-label="Book your free sales strategy call">
+          <div className="booking-result-strip">
+            <div className="complete-mark"><Check size={24}/></div>
+            <div><span>ASSESSMENT COMPLETE</span><strong>{firstName ? `${firstName}, your` : 'Your'} sales leak has been identified.</strong><p>{insight}</p></div>
+          </div>
+          <div className="booking-calendar">
+            <aside className="booking-calendar__intro">
+              <p className="booking-calendar__eyebrow"><span/> FREE STRATEGY CALL</p>
+              <h1 ref={headingRef} tabIndex={-1}>Choose a time to talk with <em>Paul.</em></h1>
+              <p className="booking-calendar__copy">A confidential conversation to pinpoint where sales are leaking, what to fix first and whether the 7 Steps to Sales Mastery is right for {contact.company || 'your business'}.</p>
+              <div className="booking-calendar__facts">
+                <CalendarFact icon={Clock3} title="60 minutes">A focused sales strategy session</CalendarFact>
+                <CalendarFact icon={Video} title="Online with Paul">Joining details sent after booking</CalendarFact>
+                <CalendarFact icon={Globe2} title="Your local time">Timezone handled by the calendar</CalendarFact>
+              </div>
+              <div className="booking-calendar__reassurance"><Check size={20}/><span>No obligation. Clear, practical next steps for your close rate.</span></div>
+            </aside>
+            <div className="booking-calendar__panel">
+              <div className="booking-calendar__head">
+                <div><span className="booking-calendar__step">01</span><div><strong>Choose your date and time</strong><small>Live availability</small></div></div>
+                <span className="booking-calendar__live"><i/> LIVE</span>
+              </div>
+              <div className="booking-calendar__embed">
+                <iframe id="paul-broome-strategy-call-calendar" ref={calendarFrameRef} className="calendar-frame" src={calendarUrl} title="Choose a strategy call time with Paul Broome" scrolling="yes" loading="eager" onLoad={handleCalendarLoad}/>
+                <Script src="https://link.msgsndr.com/js/form_embed.js" strategy="afterInteractive"/>
+              </div>
+              <div className="booking-calendar__after">
+                <a className="booking-calendar__external" href={calendarUrl} target="_blank" rel="noreferrer">Open calendar in a new tab <ExternalLink size={14}/></a>
+                <a className="booking-calendar__booked" href={confirmedUrl}>Already booked? Complete your call diagnostic <ArrowRight size={15}/></a>
+              </div>
+              {result.preview && <p className="preview-result">Preview mode: your assessment was not stored or sent.</p>}
             </div>
-            {result.nextStepUrl ? (
-              <a className="primary-cta complete-cta" href={withSubmissionId(result.nextStepUrl)}>Watch the free training <ArrowRight size={19}/></a>
-            ) : (
-              <div className="integration-placeholder"><Sparkles size={19}/><div><strong>Ready for your GHL handoff</strong><span>Add <code>NEXT_STEP_URL</code> when the training page is connected.</span></div></div>
-            )}
-            {result.preview && <p className="preview-result">Preview complete. Nothing was stored or sent.</p>}
           </div>
         </section>
       )}

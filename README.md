@@ -25,18 +25,18 @@ node node_modules/next/dist/bin/next build
 1. Focused squeeze page: “Are You Making This £660K Sales Mistake?”
 2. Contact details: name, company, phone and email.
 3. Ten one-at-a-time assessment questions covering spend, sector, trading history, appointments, team, conversion, leakage, order value, desired outcome and readiness.
-4. Completion insight and optional redirect to the training, booking calendar or next GHL funnel step.
+4. The result flows directly into Paul’s live Strategy Call calendar, with the visitor’s assessment ID and contact details carried into the booking widget.
 5. After booking, `/confirmed` presents a video-led pre-call diagnostic and saves each answer as the prospect progresses.
 
 ## Post-booking diagnostic
 
-Configure the calendar confirmation redirect to this app's `/confirmed` route. The recommended URL is:
+In HighLevel, open Paul’s **Strategy Call** calendar and set **Advanced settings → Form & confirmation → Confirmation page** to redirect to:
 
 ```text
-https://YOUR-DOMAIN/confirmed?pb_submission_id={{custom_values.pb_submission_id}}&first_name={{contact.first_name}}&last_name={{contact.last_name}}&email={{contact.email}}&phone={{contact.phone}}
+https://paul-broome.vercel.app/confirmed
 ```
 
-Use the equivalent merge-field syntax supported by the live GoHighLevel calendar. The first assessment automatically adds `pb_submission_id` to `NEXT_STEP_URL`; the booking funnel must preserve that value when redirecting back. The confirmation page also accepts `submission_id`, `lead_id` or `uuid` as fallbacks and tolerates the older malformed `?notrack=true?first_name=...` URL format.
+The parent page detects that same-origin confirmation redirect and restores the assessment UUID plus name, company, email and phone before opening the diagnostic. It also listens for HighLevel’s booking-complete message and includes a visible fallback link for visitors who booked in a separate tab. The confirmation page accepts `submission_id`, `lead_id` or `uuid` as fallbacks and tolerates the older malformed `?notrack=true?first_name=...` URL format.
 
 The diagnostic stores its draft locally and autosaves a versioned full snapshot after each change. A `pagehide` keepalive save covers tab closes and navigation. The API only accepts newer revisions, preventing an older slow request from overwriting newer answers. Completed diagnostics receive the same UUID as the original lead.
 
@@ -46,7 +46,7 @@ The £660K figure is explicitly framed as an illustrative calculation: five miss
 
 `LEAD_CAPTURE_ENABLED=false` is the default. The full experience works, but details are neither stored nor sent. A preview banner makes this clear.
 
-Set `NEXT_STEP_URL` to an HTTPS destination when the post-assessment training or GHL page is ready. In preview mode the completion screen shows the configured destination as a button rather than automatically redirecting.
+The assessment now uses Paul’s authorised HighLevel calendar directly; `NEXT_STEP_URL` is retained only for compatibility with older lead payloads and is not used by the current interface.
 
 ## Production configuration
 
