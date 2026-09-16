@@ -8,5 +8,6 @@ squeeze-preview*.png
 booking-flow-preview.png
 live-*.html
 calendar-check.png
+public/videos/
 
 .vercel
