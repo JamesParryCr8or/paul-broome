@@ -1,7 +1,7 @@
 import { after } from 'next/server';
 import { createHash } from 'node:crypto';
 import { leadSchema, assess, type Answers } from '@/lib/quiz';
-import { db, publicNextStep, syncLead } from '@/lib/server';
+import { db, diagnosticResumeUrl, publicNextStep, sendGhlWebhook, syncLead } from '@/lib/server';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 export async function POST(request: Request) {
@@ -55,24 +55,37 @@ export async function POST(request: Request) {
     const assessment = assess(lead.answers as Answers);
     if (process.env.LEAD_CAPTURE_ENABLED !== 'true')
         return Response.json({ preview: true, ...assessment, nextStepUrl: publicNextStep() });
-    if (!process.env.DATABASE_URL)
+    const hasDatabase = Boolean(process.env.DATABASE_URL);
+    const hasWebhook = Boolean(process.env.GHL_WEBHOOK);
+    if (!hasDatabase && !hasWebhook)
         return Response.json({ error: 'Enquiries are temporarily unavailable. Please try again shortly.' }, { status: 503 });
     try {
-        const sql = db();
-        const hash = createHash('sha256').update(JSON.stringify(lead)).digest('hex');
-        const existing = await sql `SELECT payload_hash FROM funnel_leads WHERE id=${lead.id}`;
-        if (existing.length && existing[0].payload_hash !== hash)
-            return Response.json({ error: 'These answers have changed since submission. Please start the quiz again.' }, { status: 409 });
-        if (!existing.length) {
-            // Persistent fixed-window throttle. No personal IP addresses are stored.
-            const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0] || 'local';
-            const bucket = createHash('sha256').update(ip + Math.floor(Date.now() / 3600000)).digest('hex');
-            const rate = await sql `INSERT INTO funnel_rate_limits (bucket,count) VALUES (${bucket},1) ON CONFLICT (bucket) DO UPDATE SET count=funnel_rate_limits.count+1 RETURNING count`;
-            if (Number(rate[0].count) > 20)
-                return Response.json({ error: 'Too many attempts. Please try again in an hour.' }, { status: 429, headers: { 'Retry-After': '3600' } });
-            await sql `INSERT INTO funnel_leads (id,payload,payload_hash,score,tier,route) VALUES (${lead.id},${sql.json(lead)},${hash},${assessment.score},${assessment.tier},${assessment.route}) ON CONFLICT (id) DO NOTHING`;
+        let savedToDatabase = false;
+        if (hasDatabase) {
+            const sql = db();
+            const hash = createHash('sha256').update(JSON.stringify(lead)).digest('hex');
+            const existing = await sql `SELECT payload_hash FROM funnel_leads WHERE id=${lead.id}`;
+            if (existing.length && existing[0].payload_hash !== hash)
+                return Response.json({ error: 'These answers have changed since submission. Please start the quiz again.' }, { status: 409 });
+            if (!existing.length) {
+                const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0] || 'local';
+                const bucket = createHash('sha256').update(ip + Math.floor(Date.now() / 3600000)).digest('hex');
+                const rate = await sql `INSERT INTO funnel_rate_limits (bucket,count) VALUES (${bucket},1) ON CONFLICT (bucket) DO UPDATE SET count=funnel_rate_limits.count+1 RETURNING count`;
+                if (Number(rate[0].count) > 20)
+                    return Response.json({ error: 'Too many attempts. Please try again in an hour.' }, { status: 429, headers: { 'Retry-After': '3600' } });
+                await sql `INSERT INTO funnel_leads (id,payload,payload_hash,score,tier,route) VALUES (${lead.id},${sql.json(lead)},${hash},${assessment.score},${assessment.tier},${assessment.route}) ON CONFLICT (id) DO NOTHING`;
+            }
+            savedToDatabase = true;
         }
-        after(() => syncLead(lead.id));
+        const appOrigin = process.env.APP_ORIGIN || new URL(request.url).origin;
+        const resumeUrl = diagnosticResumeUrl(appOrigin, lead);
+        if (hasWebhook) await sendGhlWebhook('assessment.completed', {
+            submission_id:lead.id,status:'completed',first_name:lead.name.trim().split(/\s+/)[0],full_name:lead.name,
+            company:lead.company,email:lead.email,phone:lead.phone,marketing_consent:lead.marketing,
+            enquiry_consent:lead.consent,lead_score:assessment.score,lead_tier:assessment.tier,lead_route:assessment.route,
+            answers:lead.answers,attribution:lead.attribution,abandonment_url:resumeUrl,resume_url:resumeUrl,
+        });
+        if (savedToDatabase && process.env.GHL_PRIVATE_INTEGRATION_KEY && process.env.GHL_LOCATION_ID) after(() => syncLead(lead.id));
         return Response.json({ preview: false, ...assessment, nextStepUrl: publicNextStep() });
     }
     catch {

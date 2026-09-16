@@ -55,6 +55,7 @@ Copy `.env.example` into the appropriate environment and configure:
 - `DATABASE_URL`
 - `GHL_PRIVATE_INTEGRATION_KEY`
 - `GHL_LOCATION_ID`
+- `GHL_WEBHOOK` (HTTPS inbound workflow webhook; supports webhook-only capture without a database)
 - `GHL_CUSTOM_FIELDS`
 - `GHL_DIAGNOSTIC_FIELDS`
 - `GHL_USER_ID` (optional; adds a completed diagnostic as a contact note)
@@ -63,7 +64,7 @@ Copy `.env.example` into the appropriate environment and configure:
 - `NEXT_STEP_URL`
 - `LEAD_CAPTURE_ENABLED=true` only after end-to-end testing
 
-Apply `database/schema.sql` to a private Postgres database before enabling capture. The API validates the complete payload, checks origin and content type, limits request size, uses a honeypot, hashes payloads for idempotency, applies a persistent fixed-window throttle, and performs the GHL sync after the response.
+For direct API sync and durable server-side history, apply `database/schema.sql` to a private Postgres database before enabling capture. Alternatively, `GHL_WEBHOOK` can receive the assessment and every diagnostic progress save without a database. The API validates the payload, checks origin and content type, limits request size and uses a honeypot. Database-backed capture additionally hashes payloads for idempotency and applies a persistent fixed-window throttle.
 
 ## GoHighLevel fields
 
@@ -79,7 +80,7 @@ The lead is upserted with name, company, email and phone. Create and map custom 
 
 `GHL_DIAGNOSTIC_FIELDS` follows the same format. Supported keys are `diagnostic_submission_id`, `diagnostic_status`, `diagnostic_current_step`, `diagnostic_updated_at`, `diagnostic_completed_at`, `offerAndAov`, `monthlyRevenue`, `qualifiedLeads`, `closeRate`, `lostReason`, `lostReasonOther`, `lostDeals`, `lostValue`, `structuredProcess`, `coachingInvestment`, `coachingDetails`, `frustration`, `whyNow`, `consequences`, `soleDecisionMaker` and `readyToInvest`.
 
-Partial saves update the contact and progress fields, enabling an abandonment workflow in GoHighLevel. A simple workflow can wait 30–60 minutes, check that `diagnostic_status` is not `completed`, then send the prospect back to the same dynamic `/confirmed` URL. When `GHL_USER_ID` is configured, the finished answers are also written to a single titled contact note for the sales call.
+Webhook payloads use `assessment.completed`, `diagnostic.progress` and `diagnostic.completed` event names. Every diagnostic payload contains both `abandonment_url` and `resume_url`, dynamically built from the UUID and contact details—no separate abandonment URL environment variable is needed. A HighLevel workflow can wait 30–60 minutes, check that the latest status is not `completed`, then send the supplied URL back to the prospect. When direct API sync and `GHL_USER_ID` are configured, finished answers are also written to a titled contact note.
 
 ## Scoring
 
@@ -89,7 +90,7 @@ The score is not shown as a promise of likely results. Adjust the model in `lib/
 
 ## Tracking handoff
 
-The browser currently pushes non-PII events to `window.dataLayer` only:
+The browser pushes non-PII events to `window.dataLayer`:
 
 - `sales_leak_page_view`
 - `sales_leak_assessment_started`
@@ -98,12 +99,13 @@ The browser currently pushes non-PII events to `window.dataLayer` only:
 - `sales_leak_step_complete`
 - `sales_leak_preview_complete`
 - `sales_leak_submitted`
+- `sales_leak_call_booked`
 
-Allowlisted UTM parameters plus `fbclid`, `gclid`, landing path and referrer origin are included with the server payload. Meta Pixel, CAPI, GA4 and GTM are deliberately not network-connected yet. Add an approved consent mechanism and deduplicated browser/server events when those integrations are configured.
+Meta Pixel `24080705154882371` loads after hydration. It sends the standard `Lead` event after a successful live assessment submission and `Schedule` when the booking handoff is confirmed, using the submission UUID as the browser event ID. Session storage prevents the `/confirmed` handoff from firing the same Schedule event twice. Allowlisted UTM parameters plus `fbclid`, `gclid`, landing path and referrer origin are included with the server payload.
 
 ## Brand assets
 
-The logo and founder portrait are authorised assets loaded from Paul Broome’s existing Cloudinary account. The remaining visual system is original CSS and inline SVG/lucide artwork. Remote image access is restricted in `next.config.ts` to Paul’s Cloudinary path.
+The logo, favicon and founder portrait are authorised assets loaded from Paul Broome’s existing Cloudinary account. The remaining visual system is original CSS and inline SVG/lucide artwork. Remote image access is restricted in `next.config.ts` to Paul’s Cloudinary path. The branded HighLevel calendar is eagerly preloaded off-screen so its assets and availability are warm before the visitor finishes the assessment.
 
 ## Before launch
 
@@ -112,5 +114,5 @@ The logo and founder portrait are authorised assets loaded from Paul Broome’s 
 - Verify the 43+ years and 4,500+ deal claims used on the page.
 - Test all mapped GHL fields, workflows and ownership rules.
 - Configure the next-step URL and verify the full redirect journey.
-- Install approved GTM/Meta tracking and consent behaviour.
+- Confirm consent behaviour for the installed Meta Pixel before paid traffic goes live.
 - Remove `robots: noindex` only when the final domain and launch plan require indexing.

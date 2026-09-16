@@ -11,6 +11,33 @@ export function publicNextStep() { const raw = process.env.NEXT_STEP_URL; if (!r
 catch {
     return undefined;
 } }
+export function diagnosticResumeUrl(origin: string, contact: { id: string; name?: string; fullName?: string; email?: string; phone?: string; company?: string }) {
+    const url = new URL('/confirmed', origin);
+    const fullName = (contact.fullName || contact.name || '').trim();
+    const names = fullName.split(/\s+/).filter(Boolean);
+    url.searchParams.set('pb_submission_id', contact.id);
+    if (names[0]) url.searchParams.set('first_name', names[0]);
+    if (names.length > 1) url.searchParams.set('last_name', names.slice(1).join(' '));
+    if (contact.email) url.searchParams.set('email', contact.email);
+    if (contact.phone) url.searchParams.set('phone', contact.phone);
+    if (contact.company) url.searchParams.set('company', contact.company);
+    return url.toString();
+}
+export async function sendGhlWebhook(event: string, payload: Record<string, unknown>) {
+    const raw = process.env.GHL_WEBHOOK;
+    if (!raw) return false;
+    let endpoint: URL;
+    try { endpoint = new URL(raw); } catch { throw new Error('GHL webhook URL is invalid'); }
+    if (endpoint.protocol !== 'https:') throw new Error('GHL webhook must use HTTPS');
+    const response = await fetch(endpoint, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({event,event_id:String(payload.submission_id || payload.diagnostic_submission_id || ''),sent_at:new Date().toISOString(),location_id:process.env.GHL_LOCATION_ID,user_id:process.env.GHL_USER_ID,...payload}),
+        signal:AbortSignal.timeout(12000),
+    });
+    if (!response.ok) throw new Error(`GHL webhook status ${response.status}`);
+    return true;
+}
 export async function syncLead(id: string) {
     const sql = db();
     // Atomic lease prevents concurrent retries from sending the same submission at once.

@@ -230,6 +230,8 @@ h1[tabindex="-1"]:focus { outline:none; }
 .booking-calendar__booked { color:#126e68; }
 .booking-calendar__external:hover,.booking-calendar__booked:hover { text-decoration:underline; }
 .booking-calendar__panel .preview-result { margin:14px 0 0; color:#647c78; text-align:center; }
+.calendar-preload { position:fixed; width:1px; height:1px; left:-10000px; top:-10000px; overflow:hidden; opacity:.001; pointer-events:none; }
+.calendar-preload iframe { width:960px; height:720px; border:0; }
 .site-footer { position:relative; z-index:2; width:min(1220px,calc(100% - 48px)); margin:auto auto 0; padding:19px 0 24px; display:flex; justify-content:space-between; gap:20px; color:#58716d; border-top:1px solid rgba(142,224,213,.1); font-size:9px; letter-spacing:.04em; }
 .resource-page { width:min(760px,calc(100% - 32px)); margin:60px auto; padding:55px; color:var(--text); background:var(--ink-2); border:1px solid var(--line); text-align:center; }
 .resource-page h1 { font:600 58px/1 var(--serif); }

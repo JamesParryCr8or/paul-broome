@@ -65,6 +65,17 @@ function track(event: string, detail: Record<string, unknown> = {}) {
   win.dataLayer.push({ event, ...detail });
 }
 
+function trackSchedulePixel(submissionId: string) {
+  if (!submissionId) return false;
+  const key = `paul_broome_schedule_pixel_${submissionId}`;
+  try { if (sessionStorage.getItem(key)) return true; } catch {}
+  const fbq = (window as typeof window & { fbq?: (...args: unknown[]) => void }).fbq;
+  if (typeof fbq !== 'function') return false;
+  fbq('track', 'Schedule', { content_name:'Paul Broome Strategy Call' }, { eventID:submissionId });
+  try { sessionStorage.setItem(key, '1'); } catch {}
+  return true;
+}
+
 function HlsVideo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -138,8 +149,14 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
     setLeadId(id);
     revision.current = Date.now();
     hydrated.current = true;
+    let retry: number | undefined;
+    if (!preview) {
+      trackSchedulePixel(id);
+      retry = window.setTimeout(() => trackSchedulePixel(id), 1000);
+    }
     track('diagnostic_page_view', { submission_id: id });
-  }, [initial.email, initial.fullName, initial.submissionId]);
+    return () => { if (retry !== undefined) window.clearTimeout(retry); };
+  }, [initial.email, initial.fullName, initial.submissionId, preview]);
 
   const saveDraft = useCallback(async (completed = false, keepalive = false) => {
     if (!hydrated.current || !leadId) return;

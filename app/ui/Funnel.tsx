@@ -19,7 +19,8 @@ type Contact = { name: string; company: string; phone: string; email: string; co
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
 const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778607882/pb_hero_dark_gold_paul_seated_de99e3be_za0tpd.webp';
 const LEAD_ID_KEY = 'paul_broome_submission_id';
-const BOOKING_CALENDAR_URL = 'https://api.leadconnectorhq.com/widget/booking/bkrsE26sQmcKSfOkvrys';
+const BOOKING_CALENDAR_URL = 'https://paul.7stepstosalesmastery.com/widget/booking/bkrsE26sQmcKSfOkvrys';
+const BOOKING_EMBED_SCRIPT = 'https://paul.7stepstosalesmastery.com/js/form_embed.js';
 const proofCards = [
   {
     video: 'https://assets.cdn.filesafe.space/2x8A5up52ublohNgZGKU/media/69d3c056bec7abdef10e8896.mp4',
@@ -65,6 +66,22 @@ function track(event: string, detail: Record<string, unknown> = {}) {
   const win = window as typeof window & { dataLayer?: unknown[] };
   win.dataLayer ||= [];
   win.dataLayer.push({ event, ...detail });
+}
+
+function metaTrack(event: 'Lead' | 'Schedule', detail: Record<string, unknown>, eventId: string) {
+  const fbq = (window as typeof window & { fbq?: (...args: unknown[]) => void }).fbq;
+  if (typeof fbq !== 'function') return false;
+  fbq('track', event, detail, { eventID: eventId });
+  return true;
+}
+
+function trackSchedulePixel(submissionId: string) {
+  if (!submissionId) return;
+  const key = `paul_broome_schedule_pixel_${submissionId}`;
+  try { if (sessionStorage.getItem(key)) return; } catch {}
+  if (metaTrack('Schedule', { content_name:'Paul Broome Strategy Call' }, submissionId)) {
+    try { sessionStorage.setItem(key, '1'); } catch {}
+  }
 }
 
 const iconMap: Record<string, LucideIcon> = {
@@ -263,10 +280,11 @@ export default function Funnel({ preview }: { preview: boolean }) {
   useEffect(() => {
     if (view !== 'booking') return;
     const handleCalendarMessage = (event: MessageEvent) => {
-      if (event.origin !== 'https://api.leadconnectorhq.com') return;
+      if (!['https://paul.7stepstosalesmastery.com', 'https://api.leadconnectorhq.com'].includes(event.origin)) return;
       const payload = typeof event.data === 'string' ? event.data : JSON.stringify(event.data ?? '');
       if (/(appointment|booking).*(booked|complete|confirmed|success)/i.test(payload)) {
         track('sales_leak_call_booked', { event_id: submissionId.current });
+        trackSchedulePixel(submissionId.current);
         location.assign(confirmedUrl);
       }
     };
@@ -351,6 +369,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
       setResult(data);
       setView('booking');
       track(data.preview ? 'sales_leak_preview_complete' : 'sales_leak_submitted', { tier: data.tier, event_id: submissionId.current });
+      if (!data.preview) metaTrack('Lead', { content_name:'Sales Leak Assessment', lead_tier:data.tier }, submissionId.current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Something went wrong. Please try again.');
     } finally {
@@ -383,6 +402,10 @@ export default function Funnel({ preview }: { preview: boolean }) {
     <main className="site-shell">
       {preview && <div className="preview-note"><ShieldCheck size={14}/> Safe preview — details are validated but not stored or sent.</div>}
       <header className="topbar"><Brand /><div className="header-trust"><ShieldCheck size={16}/><span>Private business assessment</span></div></header>
+      <div className="calendar-preload" aria-hidden="true">
+        <iframe src={BOOKING_CALENDAR_URL} allow="payment" scrolling="no" loading="eager" tabIndex={-1} title="Preloading Paul Broome’s booking calendar" id="paul-broome-calendar-preload"/>
+      </div>
+      <Script src={BOOKING_EMBED_SCRIPT} strategy="afterInteractive"/>
 
       {view === 'intro' && (
         <>
@@ -551,12 +574,11 @@ export default function Funnel({ preview }: { preview: boolean }) {
                 <span className="booking-calendar__live"><i/> LIVE</span>
               </div>
               <div className="booking-calendar__embed">
-                <iframe id="paul-broome-strategy-call-calendar" ref={calendarFrameRef} className="calendar-frame" src={calendarUrl} title="Choose a strategy call time with Paul Broome" scrolling="yes" loading="eager" onLoad={handleCalendarLoad}/>
-                <Script src="https://link.msgsndr.com/js/form_embed.js" strategy="afterInteractive"/>
+                <iframe id="bkrsE26sQmcKSfOkvrys_1789522029137" ref={calendarFrameRef} className="calendar-frame" src={calendarUrl} allow="payment" title="Choose a strategy call time with Paul Broome" scrolling="no" loading="eager" onLoad={handleCalendarLoad}/>
               </div>
               <div className="booking-calendar__after">
                 <a className="booking-calendar__external" href={calendarUrl} target="_blank" rel="noreferrer">Open calendar in a new tab <ExternalLink size={14}/></a>
-                <a className="booking-calendar__booked" href={confirmedUrl}>Already booked? Complete your call diagnostic <ArrowRight size={15}/></a>
+                <a className="booking-calendar__booked" href={confirmedUrl} onClick={() => trackSchedulePixel(submissionId.current)}>Already booked? Complete your call diagnostic <ArrowRight size={15}/></a>
               </div>
               {result.preview && <p className="preview-result">Preview mode: your assessment was not stored or sent.</p>}
             </div>
