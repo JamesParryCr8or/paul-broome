@@ -223,8 +223,8 @@ h1[tabindex="-1"]:focus { outline:none; }
 .booking-calendar__head small { color:#768b87; font-size:8px; letter-spacing:.08em; text-transform:uppercase; }
 .booking-calendar__live { display:flex; align-items:center; gap:7px; color:#2f746d; font-size:8px; font-weight:900; letter-spacing:.13em; }
 .booking-calendar__live i { width:7px; height:7px; background:#4dc294; border-radius:50%; box-shadow:0 0 0 5px rgba(77,194,148,.12); }
-.booking-calendar__embed { min-height:620px; margin-top:18px; overflow:hidden; background:#fff; border:1px solid #e0e7e5; }
-.calendar-frame { width:100%!important; min-height:620px; display:block!important; opacity:1!important; visibility:visible!important; pointer-events:auto!important; position:relative!important; left:auto!important; background:#fff; border:0; }
+.booking-calendar__embed { min-height:1180px; margin-top:18px; overflow:hidden; background:#fff; border:1px solid #e0e7e5; }
+.calendar-frame { width:100%!important; height:1180px!important; min-height:1180px; display:block!important; opacity:1!important; visibility:visible!important; pointer-events:auto!important; position:relative!important; left:auto!important; background:#fff; border:0; }
 .booking-calendar__after { padding-top:15px; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
 .booking-calendar__external,.booking-calendar__booked { display:inline-flex; align-items:center; gap:6px; color:#53716c; font-size:9px; font-weight:700; text-decoration:none; }
 .booking-calendar__booked { color:#126e68; }
@@ -312,7 +312,7 @@ h1[tabindex="-1"]:focus { outline:none; }
   .booking-calendar__intro h1 { font-size:clamp(45px,13vw,58px); }
   .booking-calendar__panel { padding:16px 10px 20px; }
   .booking-calendar__head { padding-inline:3px; }
-  .booking-calendar__embed,.calendar-frame { min-height:680px; }
+  .booking-calendar__embed,.calendar-frame { min-height:1240px; height:1240px!important; }
   .booking-calendar__after { padding-inline:4px; }
   .site-footer { width:calc(100% - 28px); flex-direction:column; align-items:center; text-align:center; }
 }
