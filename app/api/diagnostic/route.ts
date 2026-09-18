@@ -60,6 +60,9 @@ export async function POST(request: Request) {
     }
     if (hasDirectSync) deliveries.push(syncDiagnosticDirect(diagnostic));
     const results = await Promise.allSettled(deliveries);
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') console.error('[diagnostic capture] delivery failed', { destination: hasWebhook && index === 0 ? 'webhook' : 'ghl-direct', error: String(result.reason) });
+    });
     if (results.length && results.every(result => result.status === 'rejected')) throw new Error('All capture destinations failed');
     if (savedToDatabase && hasDirectSync) after(() => syncDiagnostic(diagnostic.id));
     return Response.json({preview:false,saved:true,completed:diagnostic.completed});

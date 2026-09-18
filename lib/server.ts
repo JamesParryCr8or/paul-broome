@@ -59,7 +59,11 @@ async function enrolGhlWorkflow(contactId: string, workflowId: string) {
         method:'POST', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
         body:JSON.stringify({eventStartTime:new Date().toISOString()}), signal:AbortSignal.timeout(12000),
     });
-    if (!response.ok) throw new Error(`CRM workflow status ${response.status}`);
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`CRM workflow status ${response.status}${body ? `: ${body.slice(0, 500)}` : ''}`);
+    }
+    console.info('[ghl] workflow enrolment succeeded', { contactId, workflowId });
 }
 async function upsertGhl(name: string, email: string, phone: string, company: string | undefined, source: string, values: Record<string,string>, fields: Record<string,string>) {
     const token = ghlToken(); if (!token || !process.env.GHL_LOCATION_ID) throw new Error('CRM not configured');
@@ -73,12 +77,14 @@ async function upsertGhl(name: string, email: string, phone: string, company: st
 export async function syncLeadDirect(lead: Lead) {
     const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
     const contactId = await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
+    console.info('[ghl] assessment contact upserted', { contactId });
     await enrolGhlWorkflow(contactId, assessmentWorkflowId);
 }
 export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) {
     if (!diagnostic.email&&!diagnostic.phone) return;
     const values=Object.fromEntries(Object.entries(diagnostic.answers as DiagnosticAnswers).map(([key,value])=>[key,diagnosticValue(value)]));
     const contactId = await upsertGhl(diagnostic.fullName,diagnostic.email,diagnostic.phone,undefined,'Paul Broome Pre-Call Diagnostic',values,diagnosticGhlFields);
+    console.info('[ghl] diagnostic contact upserted', { contactId, completed: diagnostic.completed });
     if (diagnostic.completed) await enrolGhlWorkflow(contactId, diagnosticWorkflowId);
 }
 export async function syncLead(id: string) {

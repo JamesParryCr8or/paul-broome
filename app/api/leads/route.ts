@@ -76,6 +76,9 @@ export async function POST(request: Request) {
           }) : Promise.resolve(),
           hasDirectSync ? syncLeadDirect(lead) : Promise.resolve(),
         ]);
+        deliveries.forEach((result, index) => {
+          if (result.status === 'rejected') console.error('[lead capture] delivery failed', { destination: index === 0 ? 'webhook' : 'ghl-direct', error: String(result.reason) });
+        });
         if (deliveries.every(result => result.status === 'rejected')) throw new Error('All capture destinations failed');
         if (savedToDatabase && hasDirectSync) after(() => syncLead(lead.id));
         return Response.json({ preview: false, ...assessment, nextStepUrl: publicNextStep() });
