@@ -3,6 +3,8 @@ import { assess, label, type Lead, type Answers, type QuestionId } from './quiz'
 import { diagnosticFieldLabels, diagnosticValue, type DiagnosticAnswers, type DiagnosticSave } from './diagnostic';
 import { assessmentGhlFields, diagnosticGhlFields } from './ghl-fields';
 let client: ReturnType<typeof postgres> | undefined;
+const assessmentWorkflowId = '1666b6d0-8721-40fc-afe5-cebccaa39dde';
+const diagnosticWorkflowId = '2d5ea5b0-50dc-4613-89ab-b99f2b80b3e1';
 export function db() { if (!process.env.DATABASE_URL)
     throw new Error('Database is not configured'); return client ||= postgres(process.env.DATABASE_URL, { max: 1, idle_timeout: 20, connect_timeout: 10, prepare: false }); }
 export function publicNextStep() { const raw = process.env.NEXT_STEP_URL; if (!raw) return undefined; try {
@@ -41,15 +43,44 @@ export async function sendGhlWebhook(event: string, payload: Record<string, unkn
 }
 function ghlToken() { return process.env.GHL_PRIVATE_ACCESS_TOKEN || process.env.GHL_PRIVATE_INTEGRATION_KEY; }
 export function hasGhlDirectSync() { return Boolean(ghlToken() && process.env.GHL_LOCATION_ID); }
+export function isTrustedRequestOrigin(request: Request) {
+    const origin = request.headers.get('origin');
+    if (!origin) return false;
+    const trusted = new Set([new URL(request.url).origin]);
+    if (process.env.APP_ORIGIN) {
+        try { trusted.add(new URL(process.env.APP_ORIGIN).origin); } catch { /* Invalid optional configuration is ignored. */ }
+    }
+    return trusted.has(origin);
+}
 function customFields(values: Record<string,string>, fields: Record<string,string>) { return Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key,id]) => ({id,fieldValue:values[key]})); }
+async function enrolGhlWorkflow(contactId: string, workflowId: string) {
+    const token = ghlToken();
+    const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/workflow/${workflowId}`, {
+        method:'POST', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
+        body:JSON.stringify({eventStartTime:new Date().toISOString()}), signal:AbortSignal.timeout(12000),
+    });
+    if (!response.ok) throw new Error(`CRM workflow status ${response.status}`);
+}
 async function upsertGhl(name: string, email: string, phone: string, company: string | undefined, source: string, values: Record<string,string>, fields: Record<string,string>) {
     const token = ghlToken(); if (!token || !process.env.GHL_LOCATION_ID) throw new Error('CRM not configured');
     const names = name.trim().split(/\s+/).filter(Boolean);
     const response = await fetch('https://services.leadconnectorhq.com/contacts/upsert',{method:'POST',headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},body:JSON.stringify({locationId:process.env.GHL_LOCATION_ID,firstName:names[0]||undefined,lastName:names.slice(1).join(' ')||undefined,email:email||undefined,phone:phone||undefined,companyName:company||undefined,source,customFields:customFields(values,fields)}),signal:AbortSignal.timeout(12000)});
     if (!response.ok) throw new Error(`CRM status ${response.status}`);
+    const contactId = (await response.json()).contact?.id as string | undefined;
+    if (!contactId) throw new Error('CRM missing contact ID');
+    return contactId;
 }
-export async function syncLeadDirect(lead: Lead) { const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)])); await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields); }
-export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) { if (!diagnostic.email&&!diagnostic.phone) return; const values=Object.fromEntries(Object.entries(diagnostic.answers as DiagnosticAnswers).map(([key,value])=>[key,diagnosticValue(value)])); await upsertGhl(diagnostic.fullName,diagnostic.email,diagnostic.phone,undefined,'Paul Broome Pre-Call Diagnostic',values,diagnosticGhlFields); }
+export async function syncLeadDirect(lead: Lead) {
+    const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
+    const contactId = await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
+    await enrolGhlWorkflow(contactId, assessmentWorkflowId);
+}
+export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) {
+    if (!diagnostic.email&&!diagnostic.phone) return;
+    const values=Object.fromEntries(Object.entries(diagnostic.answers as DiagnosticAnswers).map(([key,value])=>[key,diagnosticValue(value)]));
+    const contactId = await upsertGhl(diagnostic.fullName,diagnostic.email,diagnostic.phone,undefined,'Paul Broome Pre-Call Diagnostic',values,diagnosticGhlFields);
+    if (diagnostic.completed) await enrolGhlWorkflow(contactId, diagnosticWorkflowId);
+}
 export async function syncLead(id: string) {
     const sql = db();
     // Atomic lease prevents concurrent retries from sending the same submission at once.

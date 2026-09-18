@@ -1,24 +1,11 @@
 import { after } from 'next/server';
 import { createHash } from 'node:crypto';
 import { leadSchema, assess, type Answers } from '@/lib/quiz';
-import { db, diagnosticResumeUrl, hasGhlDirectSync, publicNextStep, sendGhlWebhook, syncLead, syncLeadDirect } from '@/lib/server';
+import { db, diagnosticResumeUrl, hasGhlDirectSync, isTrustedRequestOrigin, publicNextStep, sendGhlWebhook, syncLead, syncLeadDirect } from '@/lib/server';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 export async function POST(request: Request) {
-    const origin = request.headers.get('origin');
-    const allowed = process.env.APP_ORIGIN || new URL(request.url).origin;
-    // Next can normalise 127.0.0.1 to localhost on any local development port.
-    let localPreview = false;
-    if (process.env.NODE_ENV === 'development' && origin) {
-        try {
-            const submitted = new URL(origin);
-            const expected = new URL(allowed);
-            const localHosts = new Set(['127.0.0.1', 'localhost']);
-            localPreview = localHosts.has(submitted.hostname) && localHosts.has(expected.hostname) && submitted.port === expected.port;
-        }
-        catch {}
-    }
-    if (origin !== allowed && !localPreview)
+    if (!isTrustedRequestOrigin(request))
         return Response.json({ error: 'Please submit from the website.' }, { status: 403 });
     if (!request.headers.get('content-type')?.startsWith('application/json'))
         return Response.json({ error: 'Invalid request.' }, { status: 415 });

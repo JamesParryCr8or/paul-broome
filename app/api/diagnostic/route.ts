@@ -1,24 +1,12 @@
 import { after } from 'next/server';
 import { diagnosticSaveSchema, validateCompletedDiagnostic } from '@/lib/diagnostic';
-import { db, diagnosticResumeUrl, hasGhlDirectSync, sendGhlWebhook, syncDiagnostic, syncDiagnosticDirect } from '@/lib/server';
+import { db, diagnosticResumeUrl, hasGhlDirectSync, isTrustedRequestOrigin, sendGhlWebhook, syncDiagnostic, syncDiagnosticDirect } from '@/lib/server';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-function validOrigin(request: Request) {
-  const origin = request.headers.get('origin');
-  const allowed = process.env.APP_ORIGIN || new URL(request.url).origin;
-  if (origin === allowed) return true;
-  if (process.env.NODE_ENV !== 'development' || !origin) return false;
-  try {
-    const submitted = new URL(origin);
-    const expected = new URL(allowed);
-    return ['127.0.0.1','localhost'].includes(submitted.hostname) && ['127.0.0.1','localhost'].includes(expected.hostname) && submitted.port === expected.port;
-  } catch { return false; }
-}
-
 export async function POST(request: Request) {
-  if (!validOrigin(request)) return Response.json({error:'Please submit from the website.'},{status:403});
+  if (!isTrustedRequestOrigin(request)) return Response.json({error:'Please submit from the website.'},{status:403});
   if (!request.headers.get('content-type')?.startsWith('application/json')) return Response.json({error:'Invalid request.'},{status:415});
   if (Number(request.headers.get('content-length')||0)>24000) return Response.json({error:'Request too large.'},{status:413});
   const reader = request.body?.getReader();
