@@ -116,3 +116,5 @@ The logo, favicon and founder portrait are authorised assets loaded from Paul Br
 - Configure the next-step URL and verify the full redirect journey.
 - Confirm consent behaviour for the installed Meta Pixel before paid traffic goes live.
 - Remove `robots: noindex` only when the final domain and launch plan require indexing.
+
+Deployment marker: production redeploy requested 2026-09-18.
