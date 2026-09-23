@@ -5,6 +5,7 @@ import { assessmentGhlFields, diagnosticGhlFields } from './ghl-fields';
 let client: ReturnType<typeof postgres> | undefined;
 const assessmentWorkflowId = '1666b6d0-8721-40fc-afe5-cebccaa39dde';
 const diagnosticWorkflowId = '2d5ea5b0-50dc-4613-89ab-b99f2b80b3e1';
+const funnelTag = 'cr8or_ai_funnel';
 export function db() { if (!process.env.DATABASE_URL)
     throw new Error('Database is not configured'); return client ||= postgres(process.env.DATABASE_URL, { max: 1, idle_timeout: 20, connect_timeout: 10, prepare: false }); }
 export function publicNextStep() { const raw = process.env.NEXT_STEP_URL; if (!raw) return undefined; try {
@@ -74,10 +75,23 @@ async function upsertGhl(name: string, email: string, phone: string, company: st
     if (!contactId) throw new Error('CRM missing contact ID');
     return contactId;
 }
+async function addGhlTag(contactId: string) {
+    const token = ghlToken();
+    const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tags`, {
+        method:'POST', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
+        body:JSON.stringify({tags:[funnelTag]}), signal:AbortSignal.timeout(12000),
+    });
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`CRM tag status ${response.status}${body ? `: ${body.slice(0, 500)}` : ''}`);
+    }
+    console.info('[ghl] funnel tag applied', { contactId, tag:funnelTag });
+}
 export async function syncLeadDirect(lead: Lead) {
     const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
     const contactId = await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
     console.info('[ghl] assessment contact upserted', { contactId });
+    await addGhlTag(contactId);
     await enrolGhlWorkflow(contactId, assessmentWorkflowId);
 }
 export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) {
@@ -85,6 +99,7 @@ export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) {
     const values=Object.fromEntries(Object.entries(diagnostic.answers as DiagnosticAnswers).map(([key,value])=>[key,diagnosticValue(value)]));
     const contactId = await upsertGhl(diagnostic.fullName,diagnostic.email,diagnostic.phone,undefined,'Paul Broome Pre-Call Diagnostic',values,diagnosticGhlFields);
     console.info('[ghl] diagnostic contact upserted', { contactId, completed: diagnostic.completed });
+    await addGhlTag(contactId);
     if (diagnostic.completed) await enrolGhlWorkflow(contactId, diagnosticWorkflowId);
 }
 export async function syncLead(id: string) {
