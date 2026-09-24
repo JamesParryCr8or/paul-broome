@@ -161,6 +161,7 @@ h1[tabindex="-1"]:focus { outline:none; }
 .question-panel { align-self:center; padding:46px 58px; animation:arrive .35s ease both; }
 @keyframes arrive { from { opacity:0; transform:translateY(9px); } }
 .question-panel h1 { max-width:720px; font-size:clamp(39px,4vw,57px); line-height:1; }
+.mobile-question-visual { display:none; }
 .question-hint { max-width:680px; margin:17px 0 25px; color:#89a39e; font-size:13px; line-height:1.6; }
 .option-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .option-grid.dense { grid-template-columns:1fr 1fr; }
@@ -300,12 +301,20 @@ h1[tabindex="-1"]:focus { outline:none; }
   .form-panel h1,.question-panel h1 { font-size:clamp(36px,11vw,48px); }
   .details-form { grid-template-columns:1fr; gap:13px; }
   .details-form .primary-cta,.check-row { grid-column:1; }
-  .visual-panel { min-height:250px; padding:20px; }
-  .question-number { top:18px; left:19px; font-size:27px; }
-  .question-visual { width:188px; height:188px; }
-  .visual-core { width:82px; height:82px; }
-  .visual-caption { display:none; }
-  .question-hint { font-size:12px; }
+  .quiz-layout .visual-panel { display:none; }
+  .quiz-layout .question-panel { padding:25px 20px 29px; }
+  .quiz-layout .question-panel h1 { font-size:clamp(34px,10vw,41px); }
+  .mobile-question-visual { height:84px; margin:7px 0 4px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .mobile-question-visual .question-visual { width:84px; height:84px; }
+  .mobile-question-visual .visual-core { width:43px; height:43px; box-shadow:0 0 25px rgba(53,190,181,.14),inset 0 0 14px rgba(53,190,181,.1); }
+  .mobile-question-visual .visual-core svg { width:24px; height:24px; }
+  .mobile-question-visual .gauge-count { bottom:-4px; min-width:52px; padding:3px 6px; }
+  .mobile-question-visual .gauge-count strong { font-size:16px; }
+  .mobile-question-visual .gauge-count span { font-size:6px; }
+  .mobile-question-visual .float-one { width:25px; height:25px; top:7px; right:8px; font-size:14px; }
+  .mobile-question-visual .float-two { width:22px; height:22px; bottom:8px; left:10px; font-size:12px; }
+  .mobile-question-visual .visual-spark { width:5px; height:5px; right:11px; top:14px; }
+  .question-hint { margin:9px 0 16px; font-size:12px; }
   .option-grid,.option-grid.dense { grid-template-columns:1fr; gap:8px; }
   .option-card { min-height:58px; }
   .question-actions { display:grid; grid-template-columns:auto 1fr; }

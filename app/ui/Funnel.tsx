@@ -561,6 +561,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
             <div className="question-panel">
               <p className="eyebrow compact"><span/> {question.eyebrow.toUpperCase()}</p>
               <h1 ref={headingRef} tabIndex={-1}>{question.question}</h1>
+              <div className="mobile-question-visual" aria-hidden="true"><QuestionVisual visual={question.visual} selected={selected}/></div>
               <p className="question-hint">{question.hint}</p>
               <div className={`option-grid ${question.options.length >= 7 ? 'dense' : ''}`} role="radiogroup" aria-label={question.question}>
                 {question.options.map(option => {
