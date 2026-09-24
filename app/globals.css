@@ -32,6 +32,8 @@ h1[tabindex="-1"]:focus { outline:none; }
 .primary-cta:hover { transform:translateY(-2px); box-shadow:0 16px 42px rgba(51,195,184,.28),inset 0 1px rgba(255,255,255,.55); filter:saturate(1.08); }
 .primary-cta:disabled { opacity:.42; cursor:not-allowed; transform:none; box-shadow:none; }
 .hero-cta { min-width:250px; }
+.sticky-sales-cta { position:fixed; z-index:30; right:24px; bottom:24px; min-height:52px; padding:12px 19px; box-shadow:0 18px 48px rgba(0,0,0,.38),0 12px 30px rgba(51,195,184,.24),inset 0 1px rgba(255,255,255,.55); animation:sticky-cta-in .22s ease-out both; }
+@keyframes sticky-cta-in { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
 .microcopy { margin-top:18px; display:flex; align-items:center; flex-wrap:wrap; gap:7px; color:#7f9b96; font-size:11px; }
 .microcopy svg { color:var(--gold); }
 .microcopy i { width:1px; height:14px; margin:0 5px; background:var(--line); }
@@ -116,6 +118,12 @@ h1[tabindex="-1"]:focus { outline:none; }
 .form-panel h1 { max-width:620px; font-size:clamp(40px,4vw,56px); line-height:1; }
 .details-form { margin-top:30px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .details-form.single-field-form { grid-template-columns:1fr; }
+.squeeze-shell .split-card { min-height:610px; }
+.squeeze-shell .form-panel h1 em { color:var(--aqua-bright); font-style:normal; }
+.squeeze-lead { max-width:580px; margin:17px 0 0; color:var(--muted); font-size:13px; line-height:1.65; }
+.squeeze-form { margin-top:24px; }
+.squeeze-form .primary-cta { margin-top:3px; }
+.squeeze-submit-card { min-height:470px; }
 .single-field-form>label { grid-column:1/-1; }
 .details-form>label:not(.check-row):not(.honey) { display:grid; gap:7px; }
 .details-form>label>span { color:#acc0bc; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
@@ -265,6 +273,7 @@ h1[tabindex="-1"]:focus { outline:none; }
   .hero-copy h1 { font-size:clamp(49px,15vw,66px); }
   .hero-lead { margin-top:22px; font-size:15px; }
   .primary-cta { width:100%; }
+  .sticky-sales-cta { right:10px; bottom:10px; width:calc(100% - 20px); }
   .microcopy { font-size:9px; }
   .proof-row { margin-top:35px; }
   .proof-row div { padding:0 10px; }

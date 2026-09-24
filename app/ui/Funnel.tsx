@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { questions, type Answers, type QuestionId } from '@/lib/quiz';
 
-type View = 'intro' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
+type View = 'intro' | 'squeeze' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
 type Contact = { name: string; company: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
 
@@ -208,8 +208,8 @@ function CalendarFact({ icon: Icon, title, children }: { icon: LucideIcon; title
   return <div><Icon size={22}/><span><strong>{title}</strong>{children}</span></div>;
 }
 
-export default function Funnel({ preview }: { preview: boolean }) {
-  const [view, setView] = useState<View>('intro');
+export default function Funnel({ preview, squeeze = false }: { preview: boolean; squeeze?: boolean }) {
+  const [view, setView] = useState<View>(() => squeeze ? 'squeeze' : 'intro');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Partial<Answers>>({});
   const [contact, setContact] = useState<Contact>({ name: '', company: '', phone: '', email: '', consent: true, marketing: true, website: '' });
@@ -222,7 +222,10 @@ export default function Funnel({ preview }: { preview: boolean }) {
   const submissionId = useRef('');
   const attribution = useRef<Record<string, string>>({});
   const advanceTimer = useRef<number | null>(null);
-  const totalSteps = questions.length + 3;
+  const squeezeSubmissionStarted = useRef(false);
+  const heroCtaRef = useRef<HTMLButtonElement>(null);
+  const [showStickyCta, setShowStickyCta] = useState(false);
+  const totalSteps = questions.length + (squeeze ? 1 : 3);
   const question = questions[questionIndex];
   const selected = answers[question?.id];
 
@@ -246,6 +249,22 @@ export default function Funnel({ preview }: { preview: boolean }) {
   useEffect(() => () => {
     if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (squeeze || view !== 'intro' || !heroCtaRef.current) {
+      setShowStickyCta(false);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => setShowStickyCta(!entry.isIntersecting), { threshold: 0.2 });
+    observer.observe(heroCtaRef.current);
+    return () => observer.disconnect();
+  }, [squeeze, view]);
+
+  useEffect(() => {
+    if (!squeeze || view !== 'contact' || squeezeSubmissionStarted.current) return;
+    squeezeSubmissionStarted.current = true;
+    void submit();
+  }, [squeeze, view]);
 
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -320,6 +339,13 @@ export default function Funnel({ preview }: { preview: boolean }) {
     track('sales_leak_company_step_complete');
   }
 
+  function saveSqueeze(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setView('quiz');
+    track('sales_leak_squeeze_details_complete');
+  }
+
   async function saveContact(event: FormEvent) {
     event.preventDefault();
     setError('');
@@ -348,8 +374,8 @@ export default function Funnel({ preview }: { preview: boolean }) {
       track('sales_leak_step_complete', { step: questionIndex + 1 });
       return;
     }
-    setView('contact');
     track('sales_leak_questions_complete');
+    setView('contact');
   }
 
   function continueQuiz() {
@@ -390,7 +416,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
     setError('');
     if (view === 'name') setView('intro');
     else if (view === 'company') setView('name');
-    else if (view === 'quiz' && questionIndex === 0) setView('company');
+    else if (view === 'quiz' && questionIndex === 0) setView(squeeze ? 'squeeze' : 'company');
     else if (view === 'quiz') setQuestionIndex(current => Math.max(0, current - 1));
     else if (view === 'contact') {
       setQuestionIndex(questions.length - 1);
@@ -414,7 +440,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
             <div className="eyebrow"><span /> FOR UK HOME IMPROVEMENT BUSINESS OWNERS</div>
             <h1 ref={headingRef} tabIndex={-1}>Are You Making This <em>£660K</em> Sales Mistake?</h1>
             <p className="hero-lead">Most home improvement businesses lose deals without even realising why. This short assessment reveals the moment sales go wrong—and how to regain control starting today.</p>
-            <button className="primary-cta hero-cta" onClick={begin}>Find my sales leak <ArrowRight size={20}/></button>
+            <button ref={heroCtaRef} className="primary-cta hero-cta" onClick={begin}>Find my sales leak <ArrowRight size={20}/></button>
             <div className="microcopy"><Clock3 size={15}/><span>Takes around 2 minutes</span><i/><LockKeyhole size={15}/><span>Your answers stay private</span></div>
             <div className="proof-row">
               <div><strong>43+</strong><span>years in direct sales</span></div>
@@ -431,6 +457,39 @@ export default function Funnel({ preview }: { preview: boolean }) {
         </section>
         <SocialProof onStart={begin}/>
         </>
+      )}
+
+      {view === 'intro' && showStickyCta && (
+        <button className="primary-cta sticky-sales-cta" onClick={begin}>Find my sales leak <ArrowRight size={19}/></button>
+      )}
+
+      {view === 'squeeze' && (
+        <section className="assessment-shell squeeze-shell">
+          <Progress current={1} total={totalSteps}/>
+          <div className="split-card details-layout">
+            <aside className="context-panel">
+              <div className="mini-visual"><RevenueLeakGraphic /></div>
+              <p className="step-label">Private sales assessment</p>
+              <h2>Find the leak costing your business sales.</h2>
+              <p>Share your details first, then take the short assessment to reveal where your sales conversations may be losing value.</p>
+              <div className="secure-note"><LockKeyhole size={17}/><span>Your details stay private. No spam or hard sell.</span></div>
+            </aside>
+            <div className="form-panel">
+              <p className="eyebrow compact"><span/> START YOUR ASSESSMENT</p>
+              <h1 ref={headingRef} tabIndex={-1}>Are You Making This <em>£660K</em> Sales Mistake?</h1>
+              <p className="squeeze-lead">Answer a few questions to see where deals may be slipping away—and what to fix first.</p>
+              <form className="details-form squeeze-form" onSubmit={saveSqueeze}>
+                <label><span>Your name *</span><input required minLength={2} autoFocus autoComplete="name" value={contact.name} onChange={e => setContact({...contact, name:e.target.value})} placeholder="e.g. David Smith" /></label>
+                <label><span>Email *</span><input required type="email" autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
+                <label><span>Phone *</span><input required type="tel" minLength={10} maxLength={22} autoComplete="tel" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="Your best contact number" /></label>
+                <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
+                <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
+                <label className="check-row optional"><input type="checkbox" checked={contact.marketing} onChange={e => setContact({...contact, marketing:e.target.checked})}/><span>Send me occasional practical sales insights by email. Optional.</span></label>
+                <button className="primary-cta" type="submit">Start my assessment <ArrowRight size={19}/></button>
+              </form>
+            </div>
+          </div>
+        </section>
       )}
 
       {view === 'name' && (
@@ -522,6 +581,20 @@ export default function Funnel({ preview }: { preview: boolean }) {
       )}
 
       {view === 'contact' && (
+        squeeze ? (
+          <section className="assessment-shell">
+            <Progress current={totalSteps} total={totalSteps}/>
+            <div className="split-card details-layout squeeze-submit-card">
+              <aside className="context-panel"><div className="mini-visual"><RevenueLeakGraphic /></div></aside>
+              <div className="form-panel">
+                <p className="eyebrow compact"><span/> ASSESSMENT COMPLETE</p>
+                <h1 ref={headingRef} tabIndex={-1}>Preparing your sales leak snapshot…</h1>
+                <p className="squeeze-lead">One moment while we put your answers together.</p>
+                {error && <><p className="form-error" role="alert">{error}</p><button className="primary-cta" onClick={() => { squeezeSubmissionStarted.current = false; void submit(); }}>Try again <ArrowRight size={19}/></button></>}
+              </div>
+            </div>
+          </section>
+        ) : (
         <section className="assessment-shell">
           <Progress current={totalSteps} total={totalSteps}/>
           <div className="split-card details-layout">
@@ -548,6 +621,7 @@ export default function Funnel({ preview }: { preview: boolean }) {
             </div>
           </div>
         </section>
+        )
       )}
 
       {view === 'booking' && result && (
