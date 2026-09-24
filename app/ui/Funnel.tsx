@@ -228,6 +228,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const totalSteps = questions.length + (squeeze ? 1 : 3);
   const question = questions[questionIndex];
   const selected = answers[question?.id];
+  const quizProgressStep = squeeze ? questionIndex + 2 : questionIndex < 2 ? questionIndex + 1 : questionIndex + 3;
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -321,7 +322,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   }, [answers.biggestCost]);
 
   function begin() {
-    setView('name');
+    setQuestionIndex(0);
+    setView('quiz');
     track('sales_leak_assessment_started');
   }
 
@@ -335,6 +337,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   function saveCompany(event: FormEvent) {
     event.preventDefault();
     setError('');
+    setQuestionIndex(2);
     setView('quiz');
     track('sales_leak_company_step_complete');
   }
@@ -370,6 +373,11 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   function advanceQuestion() {
     setError('');
     if (questionIndex < questions.length - 1) {
+      if (!squeeze && questionIndex === 1) {
+        setView('name');
+        track('sales_leak_first_questions_complete');
+        return;
+      }
       setQuestionIndex(current => current + 1);
       track('sales_leak_step_complete', { step: questionIndex + 1 });
       return;
@@ -414,9 +422,10 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
 
   function back() {
     setError('');
-    if (view === 'name') setView('intro');
+    if (view === 'name') { setQuestionIndex(1); setView('quiz'); }
     else if (view === 'company') setView('name');
-    else if (view === 'quiz' && questionIndex === 0) setView(squeeze ? 'squeeze' : 'company');
+    else if (view === 'quiz' && questionIndex === 0) setView(squeeze ? 'squeeze' : 'intro');
+    else if (view === 'quiz' && !squeeze && questionIndex === 2) setView('company');
     else if (view === 'quiz') setQuestionIndex(current => Math.max(0, current - 1));
     else if (view === 'contact') {
       setQuestionIndex(questions.length - 1);
@@ -494,12 +503,12 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
 
       {view === 'name' && (
         <section className="assessment-shell">
-          <Progress current={1} total={totalSteps}/>
+          <Progress current={3} total={totalSteps}/>
           <div className="split-card details-layout">
             <aside className="context-panel">
               <div className="mini-visual"><RevenueLeakGraphic /></div>
-              <p className="step-label">First things first</p>
-              <h2>Your assessment starts with you.</h2>
+              <p className="step-label">Make it personal</p>
+              <h2>Now let’s make your assessment relevant to you.</h2>
               <p>We’ll use your first name to personalise the experience as you uncover where sales may be slipping away.</p>
               <div className="secure-note"><LockKeyhole size={17}/><span>No spam. No hard sell. Just practical sales insight.</span></div>
             </aside>
@@ -518,7 +527,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
 
       {view === 'company' && (
         <section className="assessment-shell">
-          <Progress current={2} total={totalSteps}/>
+          <Progress current={4} total={totalSteps}/>
           <div className="split-card details-layout">
             <aside className="context-panel">
               <div className="mini-visual"><RevenueLeakGraphic /></div>
@@ -532,7 +541,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
               <h1 ref={headingRef} tabIndex={-1}>{firstName ? `Thanks, ${firstName}. What’s your company called?` : 'What’s your company called?'}</h1>
               <form className="details-form single-field-form" onSubmit={saveCompany}>
                 <label><span>Company name *</span><input required minLength={2} autoFocus autoComplete="organization" value={contact.company} onChange={e => setContact({...contact, company:e.target.value})} placeholder="e.g. Smith Roofing Ltd" /></label>
-                <button className="primary-cta" type="submit">Start the assessment <ArrowRight size={19}/></button>
+                <button className="primary-cta" type="submit">Continue <ArrowRight size={19}/></button>
               </form>
               <button className="back-link" onClick={back}><ArrowLeft size={16}/> Back</button>
             </div>
@@ -542,7 +551,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
 
       {view === 'quiz' && question && (
         <section className="assessment-shell">
-          <Progress current={questionIndex + 3} total={totalSteps}/>
+          <Progress current={quizProgressStep} total={totalSteps}/>
           <div className="split-card quiz-layout">
             <aside className="visual-panel">
               <div className="question-number">{String(questionIndex + 1).padStart(2, '0')}<span>/ {questions.length}</span></div>
