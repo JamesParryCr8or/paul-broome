@@ -267,20 +267,23 @@ h1[tabindex="-1"]:focus { outline:none; }
 }
 @media (max-width:680px) {
   .preview-note { font-size:9px; }
-  .topbar { width:calc(100% - 28px); min-height:74px; }
-  .brand { width:140px; height:58px; }
+  .topbar { width:calc(100% - 28px); min-height:52px; }
+  .brand { width:88px; height:42px; }
   .header-trust span { display:none; }
-  .hero-screen { width:calc(100% - 28px); padding:38px 0 35px; gap:25px; }
-  .hero-copy h1 { font-size:clamp(49px,15vw,66px); }
-  .hero-lead { margin-top:22px; font-size:15px; }
+  .hero-screen { width:calc(100% - 28px); padding:21px 0 18px; gap:16px; }
+  .hero-copy { padding:0; }
+  .hero-copy .eyebrow { margin-bottom:15px; font-size:9px; }
+  .hero-copy h1 { font-size:clamp(46px,14vw,59px); }
+  .hero-lead { margin:18px 0 22px; font-size:15px; }
+  .hero-cta { min-height:54px; }
   .primary-cta { width:100%; }
   .sticky-sales-cta { right:10px; bottom:10px; width:calc(100% - 20px); }
-  .microcopy { font-size:9px; }
-  .proof-row { margin-top:35px; }
+  .microcopy { margin-top:12px; font-size:9px; }
+  .proof-row { margin-top:24px; padding-top:17px; }
   .proof-row div { padding:0 10px; }
   .proof-row strong { font-size:23px; }
   .proof-row span { font-size:7px; }
-  .hero-visual { min-height:470px; }
+  .hero-visual { min-height:410px; }
   .social-proof-section { width:calc(100% - 20px); padding:65px 0 75px; }
   .proof-heading { margin-bottom:32px; }
   .proof-heading .eyebrow { font-size:8px; letter-spacing:.12em; }
