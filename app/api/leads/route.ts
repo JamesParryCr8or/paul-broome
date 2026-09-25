@@ -1,7 +1,7 @@
 import { after } from 'next/server';
 import { createHash } from 'node:crypto';
 import { leadSchema, assess, type Answers } from '@/lib/quiz';
-import { db, diagnosticResumeUrl, hasGhlDirectSync, isTrustedRequestOrigin, publicNextStep, sendGhlWebhook, syncLead, syncLeadDirect } from '@/lib/server';
+import { db, diagnosticResumeUrl, hasGhlDirectSync, isTrustedRequestOrigin, publicNextStep, sendGhlWebhook, syncLead, syncLeadDirect, verifyGhlContactId } from '@/lib/server';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 export async function POST(request: Request) {
@@ -39,6 +39,11 @@ export async function POST(request: Request) {
     if (!parsed.success)
         return Response.json({ error: 'Please check your answers, contact details and consent, then try again.' }, { status: 400 });
     const lead = parsed.data;
+    const capture = payload as Record<string, unknown>;
+    const contactId = typeof capture.contactId === 'string' ? capture.contactId : '';
+    const contactToken = typeof capture.contactToken === 'string' ? capture.contactToken : '';
+    if (contactId && !verifyGhlContactId(lead.id, contactId, contactToken))
+        return Response.json({ error: 'Your saved contact details could not be verified. Please return to the first page and try again.' }, { status: 403 });
     const assessment = assess(lead.answers as Answers);
     if (process.env.LEAD_CAPTURE_ENABLED !== 'true')
         return Response.json({ preview: true, ...assessment, nextStepUrl: publicNextStep() });
@@ -61,7 +66,7 @@ export async function POST(request: Request) {
                 const rate = await sql `INSERT INTO funnel_rate_limits (bucket,count) VALUES (${bucket},1) ON CONFLICT (bucket) DO UPDATE SET count=funnel_rate_limits.count+1 RETURNING count`;
                 if (Number(rate[0].count) > 20)
                     return Response.json({ error: 'Too many attempts. Please try again in an hour.' }, { status: 429, headers: { 'Retry-After': '3600' } });
-                await sql `INSERT INTO funnel_leads (id,payload,payload_hash,score,tier,route) VALUES (${lead.id},${sql.json(lead)},${hash},${assessment.score},${assessment.tier},${assessment.route}) ON CONFLICT (id) DO NOTHING`;
+                await sql `INSERT INTO funnel_leads (id,payload,payload_hash,score,tier,route,ghl_contact_id) VALUES (${lead.id},${sql.json(lead)},${hash},${assessment.score},${assessment.tier},${assessment.route},${contactId || null}) ON CONFLICT (id) DO NOTHING`;
             }
             savedToDatabase = true;
         }
@@ -74,8 +79,10 @@ export async function POST(request: Request) {
             enquiry_consent:lead.consent,lead_score:assessment.score,lead_tier:assessment.tier,lead_route:assessment.route,
             answers:lead.answers,attribution:lead.attribution,abandonment_url:resumeUrl,resume_url:resumeUrl,
           }) : Promise.resolve(),
-          hasDirectSync ? syncLeadDirect(lead) : Promise.resolve(),
+          hasDirectSync ? syncLeadDirect(lead, contactId || undefined) : Promise.resolve(),
         ]);
+        if (contactId && hasDirectSync && deliveries[1].status === 'rejected')
+            throw new Error('Could not update the saved CRM contact with assessment answers');
         deliveries.forEach((result, index) => {
           if (result.status === 'rejected') console.error('[lead capture] delivery failed', { destination: index === 0 ? 'webhook' : 'ghl-direct', error: String(result.reason) });
         });

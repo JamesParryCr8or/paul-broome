@@ -220,6 +220,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const calendarFrameRef = useRef<HTMLIFrameElement>(null);
   const submissionId = useRef('');
+  const ghlContactId = useRef('');
+  const ghlContactToken = useRef('');
   const attribution = useRef<Record<string, string>>({});
   const advanceTimer = useRef<number | null>(null);
   const squeezeSubmissionStarted = useRef(false);
@@ -237,6 +239,9 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     try {
       submissionId.current = validCandidate || localStorage.getItem(LEAD_ID_KEY) || crypto.randomUUID();
       localStorage.setItem(LEAD_ID_KEY, submissionId.current);
+      const savedContact = JSON.parse(localStorage.getItem(`pb_ghl_contact_${submissionId.current}`) || 'null') as { contactId?: string; contactToken?: string } | null;
+      ghlContactId.current = savedContact?.contactId || '';
+      ghlContactToken.current = savedContact?.contactToken || '';
     } catch { submissionId.current = validCandidate || crypto.randomUUID(); }
     for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id', 'fbclid', 'gclid']) {
       const value = params.get(key);
@@ -342,9 +347,28 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     track('sales_leak_company_step_complete');
   }
 
-  function saveSqueeze(event: FormEvent) {
+  async function saveSqueeze(event: FormEvent) {
     event.preventDefault();
     setError('');
+    if (!preview) {
+      setBusy(true);
+      try {
+        const response = await fetch('/api/leads/contact', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: submissionId.current, name: contact.name, email: contact.email, phone: contact.phone, consent: contact.consent, marketing: contact.marketing, website: contact.website }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'We couldn’t save your contact details. Please try again.');
+        ghlContactId.current = data.contactId;
+        ghlContactToken.current = data.contactToken;
+        localStorage.setItem(`pb_ghl_contact_${submissionId.current}`, JSON.stringify({ contactId: data.contactId, contactToken: data.contactToken }));
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Something went wrong. Please try again.');
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
     setView('quiz');
     track('sales_leak_squeeze_details_complete');
   }
@@ -396,7 +420,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     try {
       const response = await fetch('/api/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: submissionId.current, answers, ...contact, attribution: attribution.current }),
+        body: JSON.stringify({ id: submissionId.current, answers, ...contact, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'We couldn’t prepare your result. Please try again.');
@@ -494,7 +518,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
                 <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
                 <label className="check-row optional"><input type="checkbox" checked={contact.marketing} onChange={e => setContact({...contact, marketing:e.target.checked})}/><span>Send me occasional practical sales insights by email. Optional.</span></label>
-                <button className="primary-cta" type="submit">Start my assessment <ArrowRight size={19}/></button>
+                <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Saving your details…' : <>Start my assessment <ArrowRight size={19}/></>}</button>
               </form>
             </div>
           </div>

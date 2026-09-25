@@ -1,4 +1,5 @@
 import postgres from 'postgres';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { assess, label, type Lead, type Answers, type QuestionId } from './quiz';
 import { diagnosticFieldLabels, diagnosticValue, type DiagnosticAnswers, type DiagnosticSave } from './diagnostic';
 import { assessmentGhlFields, diagnosticGhlFields } from './ghl-fields';
@@ -44,6 +45,19 @@ export async function sendGhlWebhook(event: string, payload: Record<string, unkn
 }
 function ghlToken() { return process.env.GHL_PRIVATE_ACCESS_TOKEN || process.env.GHL_PRIVATE_INTEGRATION_KEY; }
 export function hasGhlDirectSync() { return Boolean(ghlToken() && process.env.GHL_LOCATION_ID); }
+export function signGhlContactId(submissionId: string, contactId: string) {
+    const secret = ghlToken();
+    if (!secret) throw new Error('CRM not configured');
+    return createHmac('sha256', secret).update(`${submissionId}:${contactId}`).digest('hex');
+}
+export function verifyGhlContactId(submissionId: string, contactId: string, signature: string) {
+    if (!/^[a-f0-9]{64}$/i.test(signature)) return false;
+    try {
+        const expected = Buffer.from(signGhlContactId(submissionId, contactId), 'hex');
+        const provided = Buffer.from(signature, 'hex');
+        return expected.length === provided.length && timingSafeEqual(expected, provided);
+    } catch { return false; }
+}
 export function isTrustedRequestOrigin(request: Request) {
     const origin = request.headers.get('origin');
     if (!origin) return false;
@@ -75,6 +89,26 @@ async function upsertGhl(name: string, email: string, phone: string, company: st
     if (!contactId) throw new Error('CRM missing contact ID');
     return contactId;
 }
+async function updateGhl(contactId: string, lead: Lead) {
+    const token = ghlToken();
+    if (!token) throw new Error('CRM not configured');
+    const names = lead.name.trim().split(/\s+/).filter(Boolean);
+    const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
+    const response = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(contactId)}`, {
+        method:'PUT', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
+        body:JSON.stringify({firstName:names[0],lastName:names.slice(1).join(' '),email:lead.email,phone:lead.phone,companyName:lead.company||undefined,source:'Paul Broome Sales Leak Assessment',customFields:customFields(values,assessmentGhlFields)}),
+        signal:AbortSignal.timeout(12000),
+    });
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`CRM contact update status ${response.status}${body ? `: ${body.slice(0, 500)}` : ''}`);
+    }
+    console.info('[ghl] assessment contact updated', { contactId });
+    return contactId;
+}
+export async function createSqueezeGhlContact(contact: {name:string;email:string;phone:string}) {
+    return upsertGhl(contact.name,contact.email,contact.phone,undefined,'Paul Broome Sales Leak Assessment',{},assessmentGhlFields);
+}
 async function addGhlTag(contactId: string) {
     const token = ghlToken();
     const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tags`, {
@@ -87,10 +121,10 @@ async function addGhlTag(contactId: string) {
     }
     console.info('[ghl] funnel tag applied', { contactId, tag:funnelTag });
 }
-export async function syncLeadDirect(lead: Lead) {
+export async function syncLeadDirect(lead: Lead, existingContactId?: string) {
     const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
-    const contactId = await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
-    console.info('[ghl] assessment contact upserted', { contactId });
+    const contactId = existingContactId ? await updateGhl(existingContactId,lead) : await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
+    if (!existingContactId) console.info('[ghl] assessment contact upserted', { contactId });
     await addGhlTag(contactId);
     await enrolGhlWorkflow(contactId, assessmentWorkflowId);
 }
@@ -110,23 +144,31 @@ export async function syncLead(id: string) {
         return;
     const row = rows[0];
     try {
-        if (!process.env.GHL_PRIVATE_INTEGRATION_KEY || !process.env.GHL_LOCATION_ID)
+        if (!ghlToken() || !process.env.GHL_LOCATION_ID)
             throw new Error('CRM not configured');
         const lead = row.payload as Lead;
         const a = lead.answers as Answers;
         const result = assess(a);
         const fields: Record<string, string> = JSON.parse(process.env.GHL_CUSTOM_FIELDS || '{}');
         const values: Record<string, string> = { submission_id: id, lead_score: String(result.score), lead_tier: result.tier, lead_route: result.route, marketing_consent: String(lead.marketing), enquiry_consent: 'true', consent_version: '2026-09-11-v1', consent_at: new Date(row.created_at).toISOString(), ...Object.fromEntries(Object.entries(a).map(([k, v]) => [k, label(k as QuestionId, v)])), ...lead.attribution };
-        const customFields = Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key, fieldId]) => ({ id: fieldId, field_value: values[key] }));
+        const customFields = Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key, fieldId]) => ({ id: fieldId, fieldValue: values[key] }));
         const names = lead.name.trim().split(/\s+/);
-        const response = await fetch('https://services.leadconnectorhq.com/contacts/upsert', { method: 'POST', headers: { Authorization: `Bearer ${process.env.GHL_PRIVATE_INTEGRATION_KEY}`, Version: '2021-07-28', 'Content-Type': 'application/json' }, body: JSON.stringify({ locationId: process.env.GHL_LOCATION_ID, firstName: names[0], lastName: names.slice(1).join(' '), companyName: lead.company, email: lead.email, phone: lead.phone, source: 'Paul Broome Sales Leak Assessment', customFields }), signal: AbortSignal.timeout(12000) });
+        const updateExisting = Boolean(row.ghl_contact_id);
+        const response = await fetch(updateExisting
+            ? `https://services.leadconnectorhq.com/contacts/${encodeURIComponent(row.ghl_contact_id)}`
+            : 'https://services.leadconnectorhq.com/contacts/upsert', {
+            method: updateExisting ? 'PUT' : 'POST',
+            headers: { Authorization: `Bearer ${ghlToken()}`, Version: updateExisting ? 'v3' : '2021-07-28', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...(!updateExisting ? { locationId: process.env.GHL_LOCATION_ID } : {}), firstName: names[0], lastName: names.slice(1).join(' '), companyName: lead.company, email: lead.email, phone: lead.phone, source: 'Paul Broome Sales Leak Assessment', customFields }),
+            signal: AbortSignal.timeout(12000),
+        });
         if (!response.ok)
             throw new Error(`CRM status ${response.status}`);
-        const data = await response.json();
-        if (!data.contact?.id)
-            throw new Error('CRM missing contact ID');
+        const data = updateExisting ? null : await response.json();
+        const contactId = updateExisting ? row.ghl_contact_id : data?.contact?.id;
+        if (!contactId) throw new Error('CRM missing contact ID');
         // No additive interest/consent tags: avoid stale tags and accidental marketing enrolment.
-        await sql `UPDATE funnel_leads SET sync_status='synced',ghl_contact_id=${data.contact.id},synced_at=now(),last_sync_error=null WHERE id=${id}`;
+        await sql `UPDATE funnel_leads SET sync_status='synced',ghl_contact_id=${contactId},synced_at=now(),last_sync_error=null WHERE id=${id}`;
     }
     catch (e) {
         await sql `UPDATE funnel_leads SET sync_status='failed',last_sync_error=${e instanceof Error ? e.message : 'CRM sync failed'} WHERE id=${id}`;
