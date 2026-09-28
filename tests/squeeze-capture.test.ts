@@ -23,6 +23,7 @@ test('squeeze capture tags the contact; assessment updates that contact without 
     const contactId = await createSqueezeGhlContact({ name: 'Test Owner', email: 'test@example.com', phone: '07700900123' });
     assert.equal(contactId, 'test-contact');
     assert.deepEqual(calls[1].body, { tags: ['cr8or_ai_squeeze_page'] });
+    assert.equal(calls.some(call => call.url.includes('/workflow/')), false);
     await syncLeadDirect({ name: 'Test Owner', email: 'test@example.com', phone: '07700900123', company: '', answers: {} } as Lead, contactId);
     assert.equal(calls.filter(call => call.url.endsWith('/upsert')).length, 1);
     assert.equal(calls[2].method, 'PUT');
