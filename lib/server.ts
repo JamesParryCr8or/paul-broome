@@ -70,14 +70,18 @@ export function isTrustedRequestOrigin(request: Request) {
 function customFields(values: Record<string,string>, fields: Record<string,string>) { return Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key,id]) => ({id,fieldValue:values[key]})); }
 async function enrolGhlWorkflow(contactId: string, workflowId: string) {
     const token = ghlToken();
+    // HighLevel requires an explicit numeric timezone offset for this field.
+    const eventStartTime = new Date().toISOString().replace(/Z$/, '+00:00');
     const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/workflow/${workflowId}`, {
         method:'POST', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
-        body:JSON.stringify({eventStartTime:new Date().toISOString()}), signal:AbortSignal.timeout(12000),
+        body:JSON.stringify({eventStartTime}), signal:AbortSignal.timeout(12000),
     });
     if (!response.ok) {
         const body = await response.text().catch(() => '');
         throw new Error(`CRM workflow status ${response.status}${body ? `: ${body.slice(0, 500)}` : ''}`);
     }
+    const result = await response.json().catch(() => null);
+    if (result?.succeeded === false) throw new Error('CRM workflow enrolment was declined');
     console.info('[ghl] workflow enrolment succeeded', { contactId, workflowId });
 }
 async function upsertGhl(name: string, email: string, phone: string, company: string | undefined, source: string, values: Record<string,string>, fields: Record<string,string>) {

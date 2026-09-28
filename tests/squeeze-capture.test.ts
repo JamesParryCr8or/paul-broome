@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSqueezeGhlContact, syncLeadDirect } from '../lib/server';
+import { createSqueezeGhlContact, syncDiagnosticDirect, syncLeadDirect } from '../lib/server';
 import type { Lead } from '../lib/quiz';
+import type { DiagnosticSave } from '../lib/diagnostic';
 
 test('squeeze capture tags the contact; assessment updates that contact without repeating the squeeze tag', async () => {
   const originalFetch = globalThis.fetch;
@@ -27,6 +28,15 @@ test('squeeze capture tags the contact; assessment updates that contact without 
     assert.equal(calls[2].method, 'PUT');
     assert.ok(calls[2].url.endsWith('/contacts/test-contact'));
     assert.equal(calls.filter(call => JSON.stringify(call.body).includes('cr8or_ai_squeeze_page')).length, 1);
+    const assessmentWorkflowCalls = calls.filter(call => call.url.includes('/workflow/1666b6d0-8721-40fc-afe5-cebccaa39dde'));
+    assert.equal(assessmentWorkflowCalls.length, 1);
+    assert.match(String(assessmentWorkflowCalls[0].body.eventStartTime), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+00:00$/);
+    await syncLeadDirect({ name: 'Homepage Owner', email: 'home@example.com', phone: '07700900124', company: '', answers: {} } as Lead);
+    assert.equal(calls.filter(call => call.url.includes('/workflow/1666b6d0-8721-40fc-afe5-cebccaa39dde')).length, 2);
+    await syncDiagnosticDirect({ fullName: 'Test Owner', email: 'test@example.com', phone: '07700900123', answers: {}, completed: true } as DiagnosticSave);
+    const diagnosticWorkflowCall = calls.find(call => call.url.includes('/workflow/2d5ea5b0-50dc-4613-89ab-b99f2b80b3e1'));
+    assert.ok(diagnosticWorkflowCall);
+    assert.match(String(diagnosticWorkflowCall.body.eventStartTime), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+00:00$/);
     failWorkflow = true;
     await assert.doesNotReject(() => syncLeadDirect({ name: 'Test Owner', email: 'test@example.com', phone: '07700900123', company: '', answers: {} } as Lead, contactId));
     failContact = true;
