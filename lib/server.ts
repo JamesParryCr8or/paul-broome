@@ -107,26 +107,36 @@ async function updateGhl(contactId: string, lead: Lead) {
     return contactId;
 }
 export async function createSqueezeGhlContact(contact: {name:string;email:string;phone:string}) {
-    return upsertGhl(contact.name,contact.email,contact.phone,undefined,'Paul Broome Sales Leak Assessment',{},assessmentGhlFields);
+    const contactId = await upsertGhl(contact.name,contact.email,contact.phone,undefined,'Paul Broome Sales Leak Assessment',{},assessmentGhlFields);
+    await addGhlTag(contactId, 'cr8or_ai_squeeze_page');
+    return contactId;
 }
-async function addGhlTag(contactId: string) {
+async function addGhlTag(contactId: string, tag = funnelTag) {
     const token = ghlToken();
     const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tags`, {
         method:'POST', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
-        body:JSON.stringify({tags:[funnelTag]}), signal:AbortSignal.timeout(12000),
+        body:JSON.stringify({tags:[tag]}), signal:AbortSignal.timeout(12000),
     });
     if (!response.ok) {
         const body = await response.text().catch(() => '');
         throw new Error(`CRM tag status ${response.status}${body ? `: ${body.slice(0, 500)}` : ''}`);
     }
-    console.info('[ghl] funnel tag applied', { contactId, tag:funnelTag });
+    console.info('[ghl] funnel tag applied', { contactId, tag });
 }
 export async function syncLeadDirect(lead: Lead, existingContactId?: string) {
     const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
     const contactId = existingContactId ? await updateGhl(existingContactId,lead) : await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
     if (!existingContactId) console.info('[ghl] assessment contact upserted', { contactId });
     await addGhlTag(contactId);
-    await enrolGhlWorkflow(contactId, assessmentWorkflowId);
+    // The assessment is already saved. A follow-up automation failure must not
+    // tell the visitor to resubmit their answers or block the booking screen.
+    try {
+        await enrolGhlWorkflow(contactId, assessmentWorkflowId);
+    } catch (error) {
+        console.error('[ghl] assessment saved but workflow enrolment failed', {
+            contactId, workflowId: assessmentWorkflowId, error: String(error),
+        });
+    }
 }
 export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) {
     if (!diagnostic.email&&!diagnostic.phone) return;

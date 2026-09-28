@@ -21,9 +21,10 @@ const payload = {
 };
 
 test('valid business enquiry accepted with optional marketing off', () => assert.equal(leadSchema.safeParse(payload).success, true));
-test('invalid answer, missing company, consent, malformed email and honeypot are rejected', () => {
+test('squeeze enquiries do not require a company', () => assert.equal(leadSchema.safeParse({ ...payload, company: '' }).success, true));
+test('invalid answer, consent, malformed email and honeypot are rejected', () => {
   for (const change of [
-    { answers: { ...ready, timeline: 'someday' } }, { company: '' }, { consent: false }, { email: 'bad' },
+    { answers: { ...ready, timeline: 'someday' } }, { consent: false }, { email: 'bad' },
     { website: 'spam' }, { phone: 'abcdefghij' },
   ]) assert.equal(leadSchema.safeParse({ ...payload, ...change }).success, false);
 });

@@ -11,6 +11,7 @@ import {
   Wrench, type LucideIcon,
 } from 'lucide-react';
 import { questions, type Answers, type QuestionId } from '@/lib/quiz';
+import { trackLeadOnce } from '@/lib/lead-tracking';
 
 type View = 'intro' | 'squeeze' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
@@ -68,7 +69,7 @@ function track(event: string, detail: Record<string, unknown> = {}) {
   win.dataLayer.push({ event, ...detail });
 }
 
-function metaTrack(event: 'Lead' | 'Schedule', detail: Record<string, unknown>, eventId: string) {
+function metaTrack(event: 'Schedule', detail: Record<string, unknown>, eventId: string) {
   const fbq = (window as typeof window & { fbq?: (...args: unknown[]) => void }).fbq;
   if (typeof fbq !== 'function') return false;
   fbq('track', event, detail, { eventID: eventId });
@@ -212,7 +213,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const [view, setView] = useState<View>(() => squeeze ? 'squeeze' : 'intro');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Partial<Answers>>({});
-  const [contact, setContact] = useState<Contact>({ name: '', company: '', phone: '', email: '', consent: true, marketing: true, website: '' });
+  const [contact, setContact] = useState<Contact>({ name: '', company: '', phone: '', email: '', consent: true, marketing: false, website: '' });
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
   const [advancing, setAdvancing] = useState(false);
@@ -361,7 +362,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
         if (!response.ok) throw new Error(data.error || 'We couldn’t save your contact details. Please try again.');
         ghlContactId.current = data.contactId;
         ghlContactToken.current = data.contactToken;
-        localStorage.setItem(`pb_ghl_contact_${submissionId.current}`, JSON.stringify({ contactId: data.contactId, contactToken: data.contactToken }));
+        try { localStorage.setItem(`pb_ghl_contact_${submissionId.current}`, JSON.stringify({ contactId: data.contactId, contactToken: data.contactToken })); } catch {}
+        if (!data.preview) trackLeadOnce(submissionId.current, 'Sales Leak Squeeze Page');
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : 'Something went wrong. Please try again.');
         return;
@@ -427,7 +429,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
       setResult(data);
       setView('booking');
       track(data.preview ? 'sales_leak_preview_complete' : 'sales_leak_submitted', { tier: data.tier, event_id: submissionId.current });
-      if (!data.preview) metaTrack('Lead', { content_name:'Sales Leak Assessment', lead_tier:data.tier }, submissionId.current);
+      if (!data.preview && !squeeze) trackLeadOnce(submissionId.current, 'Sales Leak Assessment');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Something went wrong. Please try again.');
     } finally {
@@ -516,9 +518,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <label><span>Email *</span><input required type="email" autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
                 <label><span>Phone *</span><input required type="tel" minLength={10} maxLength={22} autoComplete="tel" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="Your best contact number" /></label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
-                <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
-                <label className="check-row optional"><input type="checkbox" checked={contact.marketing} onChange={e => setContact({...contact, marketing:e.target.checked})}/><span>Send me occasional practical sales insights by email. Optional.</span></label>
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Saving your details…' : <>Start my assessment <ArrowRight size={19}/></>}</button>
+                <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
               </form>
             </div>
           </div>
@@ -624,7 +625,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <p className="eyebrow compact"><span/> ASSESSMENT COMPLETE</p>
                 <h1 ref={headingRef} tabIndex={-1}>Preparing your sales leak snapshot…</h1>
                 <p className="squeeze-lead">One moment while we put your answers together.</p>
-                {error && <><p className="form-error" role="alert">{error}</p><button className="primary-cta" onClick={() => { squeezeSubmissionStarted.current = false; void submit(); }}>Try again <ArrowRight size={19}/></button></>}
+                {error && <><p className="form-error" role="alert">{error}</p><button className="primary-cta" disabled={busy} onClick={() => { void submit(); }}>{busy ? 'Saving your assessment…' : 'Try again'} <ArrowRight size={19}/></button></>}
               </div>
             </div>
           </section>
@@ -646,10 +647,9 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <label><span>Email *</span><input required type="email" autoFocus autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
                 <label><span>Phone *</span><input required type="tel" minLength={10} maxLength={22} autoComplete="tel" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="Your best contact number" /></label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
-                <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
-                <label className="check-row optional"><input type="checkbox" checked={contact.marketing} onChange={e => setContact({...contact, marketing:e.target.checked})}/><span>Send me occasional practical sales insights by email. Optional.</span></label>
                 {error && <p className="form-error" role="alert">{error}</p>}
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Preparing your result…' : 'YES! I WANT TO FIX MY CLOSE RATE'}{!busy && <ArrowRight size={19}/>}</button>
+                <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
               </form>
               <button className="back-link" onClick={back} disabled={busy}><ArrowLeft size={16}/> Back</button>
             </div>

@@ -90,7 +90,8 @@ export async function POST(request: Request) {
         if (savedToDatabase && hasDirectSync) after(() => syncLead(lead.id));
         return Response.json({ preview: false, ...assessment, nextStepUrl: publicNextStep() });
     }
-    catch {
+    catch (error) {
+        console.error('[lead capture] assessment save failed', { submissionId: lead.id, error: String(error) });
         return Response.json({ error: 'We couldn’t save your enquiry. Your answers are still here — please try again.' }, { status: 503 });
     }
 }
