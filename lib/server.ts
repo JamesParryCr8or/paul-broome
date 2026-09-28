@@ -144,7 +144,7 @@ export async function getAssessmentProgress(contactId: string) {
     if (!contact || contact.locationId !== process.env.GHL_LOCATION_ID) throw new Error('CRM contact not found in this location');
     return {
         firstName: String(contact.firstName || ''), lastName: String(contact.lastName || ''),
-        email: String(contact.email || ''), phone: String(contact.phone || ''),
+        email: String(contact.email || ''), phone: String(contact.phone || ''), company: String(contact.companyName || ''),
         answers: answersFromGhlFields(contact.customFields ?? contact.customField),
     };
 }

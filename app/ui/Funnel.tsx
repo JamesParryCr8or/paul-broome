@@ -361,7 +361,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
             .find(item => item.phone.some(code => phone.startsWith(String(code))));
           const countryCode = `+${country?.phone.find(code => phone.startsWith(String(code))) || 44}`;
           setContact(current => ({ ...current, firstName: saved.firstName || '', lastName: saved.lastName || '',
-            email: saved.email || '', countryCode, countryIso: country?.iso || 'GB',
+            email: saved.email || '', company: saved.company || '', countryCode, countryIso: country?.iso || 'GB',
             phone: phone.slice(countryCode.length - 1), website: '' }));
           ghlContactId.current = resumeContactId;
           ghlContactToken.current = resumeToken;
