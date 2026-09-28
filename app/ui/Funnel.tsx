@@ -89,6 +89,8 @@ function CountryCodePicker({ value, iso, onChange }: { value: string; iso: strin
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
 const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778607882/pb_hero_dark_gold_paul_seated_de99e3be_za0tpd.webp';
 const LEAD_ID_KEY = 'paul_broome_submission_id';
+const ASSESSMENT_DRAFT_PREFIX = 'paul_broome_assessment_draft_';
+const SUBMISSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BOOKING_CALENDAR_URL = 'https://paul.7stepstosalesmastery.com/widget/booking/bkrsE26sQmcKSfOkvrys';
 const BOOKING_EMBED_SCRIPT = 'https://paul.7stepstosalesmastery.com/js/form_embed.js';
 const proofCards = [
@@ -297,6 +299,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const squeezeSubmissionStarted = useRef(false);
   const heroCtaRef = useRef<HTMLButtonElement>(null);
   const [showStickyCta, setShowStickyCta] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
   const totalSteps = questions.length + (squeeze ? 1 : 3);
   const question = questions[questionIndex];
   const selected = answers[question?.id];
@@ -305,10 +308,28 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const candidate = params.get('pb_submission_id') || params.get('submission_id') || '';
-    const validCandidate = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate) ? candidate : '';
+    const validCandidate = SUBMISSION_ID_PATTERN.test(candidate) ? candidate : '';
     try {
-      submissionId.current = validCandidate || localStorage.getItem(LEAD_ID_KEY) || crypto.randomUUID();
+      const storedId = localStorage.getItem(LEAD_ID_KEY) || '';
+      const storedDraft = SUBMISSION_ID_PATTERN.test(storedId) ? JSON.parse(localStorage.getItem(`${ASSESSMENT_DRAFT_PREFIX}${storedId}`) || 'null') : null;
+      const activeId = storedDraft?.funnel === (squeeze ? 'squeeze' : 'homepage')
+        && storedDraft.view !== 'booking' && typeof storedDraft.savedAt === 'number'
+        && Date.now() - storedDraft.savedAt < 30 * 86400000 ? storedId : '';
+      submissionId.current = validCandidate || activeId || crypto.randomUUID();
       localStorage.setItem(LEAD_ID_KEY, submissionId.current);
+      const draft = JSON.parse(localStorage.getItem(`${ASSESSMENT_DRAFT_PREFIX}${submissionId.current}`) || 'null');
+      if (draft?.funnel === (squeeze ? 'squeeze' : 'homepage') && Date.now() - draft.savedAt < 30 * 86400000) {
+        const validViews: View[] = squeeze ? ['squeeze', 'quiz', 'contact', 'booking'] : ['intro', 'quiz', 'name', 'company', 'contact', 'booking'];
+        if (validViews.includes(draft.view)) {
+          if (draft.answers && typeof draft.answers === 'object') setAnswers(draft.answers);
+          if (draft.contact && typeof draft.contact === 'object') setContact(current => ({ ...current, ...draft.contact, website: '' }));
+          if (Number.isInteger(draft.questionIndex)) setQuestionIndex(Math.max(0, Math.min(questions.length - 1, draft.questionIndex)));
+          if (draft.view !== 'booking' || draft.result) {
+            setView(draft.view);
+            if (draft.result) setResult(draft.result);
+          }
+        }
+      }
       const savedContact = JSON.parse(localStorage.getItem(`pb_ghl_contact_${submissionId.current}`) || 'null') as { contactId?: string; contactToken?: string } | null;
       ghlContactId.current = savedContact?.contactId || '';
       ghlContactToken.current = savedContact?.contactToken || '';
@@ -319,8 +340,28 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     }
     attribution.current.landing_path = location.pathname;
     try { attribution.current.referrer = document.referrer ? new URL(document.referrer).origin : ''; } catch {}
+    setDraftReady(true);
     track('sales_leak_page_view');
-  }, []);
+  }, [squeeze]);
+
+  useEffect(() => {
+    if (!draftReady || !submissionId.current) return;
+    const step = view === 'quiz' ? questions[questionIndex].id : view;
+    const url = new URL(location.href);
+    url.searchParams.set('pb_submission_id', submissionId.current);
+    url.searchParams.set('pb_step', step);
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [draftReady, questionIndex, view]);
+
+  useEffect(() => {
+    if (!draftReady || !submissionId.current) return;
+    try {
+      localStorage.setItem(`${ASSESSMENT_DRAFT_PREFIX}${submissionId.current}`, JSON.stringify({
+        funnel: squeeze ? 'squeeze' : 'homepage', view, questionIndex, answers,
+        contact: { ...contact, website: '' }, result, savedAt: Date.now(),
+      }));
+    } catch {}
+  }, [answers, contact, draftReady, questionIndex, result, squeeze, view]);
 
   useEffect(() => () => {
     if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);

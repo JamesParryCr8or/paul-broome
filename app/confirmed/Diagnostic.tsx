@@ -143,7 +143,10 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
         if (!initial.fullName && draft.fullName) setFullName(draft.fullName);
         if (!initial.email && draft.email) setEmail(draft.email);
         if (draft.answers) setAnswers(draft.answers);
-        if (Number.isInteger(draft.questionIndex)) setQuestionIndex(Math.max(0, draft.questionIndex));
+        if (Number.isInteger(draft.questionIndex)) {
+          setQuestionIndex(Math.max(0, Math.min(questions.length - 1, draft.questionIndex)));
+          setView('question');
+        }
       }
     } catch {}
     setLeadId(id);
@@ -158,17 +161,25 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
     return () => { if (retry !== undefined) window.clearTimeout(retry); };
   }, [initial.email, initial.fullName, initial.submissionId, preview]);
 
+  useEffect(() => {
+    if (!hydrated.current || !leadId) return;
+    const url = new URL(location.href);
+    url.searchParams.set('pb_submission_id', leadId);
+    url.searchParams.set('pb_step', view === 'question' ? currentQuestion.id : view);
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [currentQuestion.id, leadId, view]);
+
   const saveDraft = useCallback(async (completed = false, keepalive = false) => {
     if (!hydrated.current || !leadId) return;
     revision.current += 1;
     const payload = { id:leadId, revision:revision.current, currentStep:view === 'complete' ? activeQuestions.length : questionIndex, completed, fullName, email, phone, answers, attribution:{ landing_path:location.pathname } };
     try {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id:leadId, fullName, email, answers, questionIndex })); } catch {}
       if (!keepalive) setSaveStatus('saving');
       const response = await fetch('/api/diagnostic', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), keepalive });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'We could not save your answers.');
       if (!keepalive) setSaveStatus('saved');
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id:leadId, fullName, email, answers, questionIndex })); } catch {}
       return data;
     } catch (caught) {
       if (!keepalive) setSaveStatus('error');
