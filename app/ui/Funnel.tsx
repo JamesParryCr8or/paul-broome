@@ -12,15 +12,79 @@ import {
 } from 'lucide-react';
 import { questions, type Answers, type QuestionId } from '@/lib/quiz';
 import { trackLeadOnce } from '@/lib/lead-tracking';
+// Country dialling codes adapted from annexare/Countries (MIT), limited to the picker fields.
+import countryData from '@/lib/country-codes.json';
 
 type View = 'intro' | 'squeeze' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
-type Contact = { firstName: string; lastName: string; company: string; countryCode: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
-const countryCodes = [
-  { country: 'United Kingdom', code: '+44' }, { country: 'United States', code: '+1' },
-  { country: 'Ireland', code: '+353' }, { country: 'Australia', code: '+61' },
-  { country: 'New Zealand', code: '+64' }, { country: 'Other', code: '+' },
-];
+type Contact = { firstName: string; lastName: string; company: string; countryCode: string; countryIso: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
+type CountryDialCode = { iso: string; name: string; phone: number[] };
+const countryCodes = (countryData as CountryDialCode[]).filter(country => country.phone.length).sort((a,b) =>
+  a.iso === 'GB' ? -1 : b.iso === 'GB' ? 1 : a.iso === 'US' ? -1 : b.iso === 'US' ? 1 : a.name.localeCompare(b.name),
+);
+
+function CountryCodePicker({ value, iso, onChange }: { value: string; iso: string; onChange: (country: CountryDialCode) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const normalized = query.trim().toLocaleLowerCase().replace(/^\+/, '');
+  const displayIso = iso === 'GB' ? 'UK' : iso;
+  const matches = normalized ? countryCodes.filter(country =>
+    country.name.toLocaleLowerCase().includes(normalized)
+    || country.iso.toLocaleLowerCase() === normalized
+    || (country.iso === 'GB' && normalized === 'uk')
+    || country.phone.some(code => String(code).startsWith(normalized)),
+  ).slice(0, 12) : countryCodes.slice(0, 12);
+  const choose = (country: CountryDialCode) => {
+    onChange(country);
+    setQuery('');
+    setOpen(false);
+  };
+  return <div className="country-picker">
+    <input
+      role="combobox"
+      aria-label="Country calling code"
+      aria-expanded={open}
+      aria-controls={`country-code-options-${iso}`}
+      aria-autocomplete="list"
+      autoComplete="off"
+      value={open ? query : `+${value.replace(/^\+/, '')} ${displayIso}`}
+      placeholder="Search country, ISO code, or +dial code"
+      onFocus={() => { setQuery(''); setOpen(true); }}
+      onChange={event => {
+        const next = event.target.value;
+        setQuery(next);
+        setOpen(true);
+        const typedIso = next.trim().toLowerCase();
+        const exactIso = countryCodes.find(country => country.iso.toLowerCase() === typedIso || (country.iso === 'GB' && typedIso === 'uk'));
+        if (exactIso) choose(exactIso);
+        else if (/^\+?\d+$/.test(next.trim())) {
+          const exactCode = countryCodes.find(country => country.phone.some(code => String(code) === next.trim().replace(/^\+/, '')));
+          if (exactCode) choose(exactCode);
+        }
+      }}
+      onKeyDown={event => {
+        if (event.key === 'Escape') { setOpen(false); setQuery(''); }
+        if (event.key === 'Enter' && matches[0]) { event.preventDefault(); choose(matches[0]); }
+        if (event.key === 'ArrowDown' && matches.length) { event.preventDefault(); document.getElementById(`country-option-${matches[0].iso}`)?.focus(); }
+      }}
+      onBlur={event => {
+        if (event.relatedTarget instanceof Node && event.currentTarget.parentElement?.contains(event.relatedTarget)) return;
+        window.setTimeout(() => setOpen(false), 150);
+      }}
+    />
+    {open && <div className="country-picker-options" role="listbox" id={`country-code-options-${iso}`}>
+      {matches.length ? matches.map(country => <button
+        id={`country-option-${country.iso}`}
+        key={country.iso}
+        type="button"
+        role="option"
+        aria-selected={country.iso === iso}
+        onMouseDown={event => event.preventDefault()}
+        onClick={() => choose(country)}
+      ><span>{country.name}</span><strong>{country.iso === 'GB' ? 'UK' : country.iso} · +{country.phone[0]}</strong></button>) : <p>No matching country or code.</p>}
+    </div>}
+  </div>;
+}
 
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
 const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778607882/pb_hero_dark_gold_paul_seated_de99e3be_za0tpd.webp';
@@ -218,7 +282,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const [view, setView] = useState<View>(() => squeeze ? 'squeeze' : 'intro');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Partial<Answers>>({});
-  const [contact, setContact] = useState<Contact>({ firstName: '', lastName: '', company: '', countryCode: '+44', phone: '', email: '', consent: true, marketing: false, website: '' });
+  const [contact, setContact] = useState<Contact>({ firstName: '', lastName: '', company: '', countryCode: '+44', countryIso: 'GB', phone: '', email: '', consent: true, marketing: false, website: '' });
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
   const [advancing, setAdvancing] = useState(false);
@@ -524,7 +588,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <label><span>First name *</span><input required minLength={2} autoFocus autoComplete="given-name" value={contact.firstName} onChange={e => setContact({...contact, firstName:e.target.value})} placeholder="e.g. David" /></label>
                 <label><span>Last name *</span><input required minLength={2} autoComplete="family-name" value={contact.lastName} onChange={e => setContact({...contact, lastName:e.target.value})} placeholder="e.g. Smith" /></label>
                 <label><span>Email *</span><input required type="email" autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
-                <label><span>Phone *</span><span className="phone-input"><select aria-label="Country calling code" value={contact.countryCode} onChange={e => setContact({...contact, countryCode:e.target.value})}>{countryCodes.map(item => <option key={item.country} value={item.code}>{item.country} ({item.code})</option>)}</select><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
+                <label><span>Phone *</span><span className="phone-input"><CountryCodePicker value={contact.countryCode} iso={contact.countryIso} onChange={country => setContact({...contact, countryCode:`+${country.phone[0]}`, countryIso:country.iso})}/><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Saving your details…' : <>Start my assessment <ArrowRight size={19}/></>}</button>
                 <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
@@ -654,7 +718,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
               <h1 ref={headingRef} tabIndex={-1}>See where {contact.company || 'your business'} is losing sales.</h1>
               <form className="details-form" onSubmit={saveContact}>
                 <label><span>Email *</span><input required type="email" autoFocus autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="e.g. david@company.co.uk" /></label>
-                <label><span>Phone *</span><span className="phone-input"><select aria-label="Country calling code" value={contact.countryCode} onChange={e => setContact({...contact, countryCode:e.target.value})}>{countryCodes.map(item => <option key={item.country} value={item.code}>{item.country} ({item.code})</option>)}</select><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
+                <label><span>Phone *</span><span className="phone-input"><CountryCodePicker value={contact.countryCode} iso={contact.countryIso} onChange={country => setContact({...contact, countryCode:`+${country.phone[0]}`, countryIso:country.iso})}/><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
                 {error && <p className="form-error" role="alert">{error}</p>}
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Preparing your result…' : 'YES! I WANT TO FIX MY CLOSE RATE'}{!busy && <ArrowRight size={19}/>}</button>
