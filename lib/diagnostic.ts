@@ -63,6 +63,10 @@ export function diagnosticValue(value: string | undefined) {
   return value ? valueLabels[value] || value : '';
 }
 
+export function diagnosticRawValue(value: string) {
+  return Object.entries(valueLabels).find(([, label]) => label === value)?.[0] || value;
+}
+
 export const diagnosticFieldLabels: Record<keyof DiagnosticAnswers, string> = {
   offerAndAov: 'What they sell and average order value', monthlyRevenue: 'Current monthly revenue',
   qualifiedLeads: 'Qualified leads per week', closeRate: 'Current close rate (%)',

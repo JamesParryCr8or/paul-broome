@@ -79,7 +79,7 @@ export async function POST(request: Request) {
             enquiry_consent:lead.consent,lead_score:assessment.score,lead_tier:assessment.tier,lead_route:assessment.route,
             answers:lead.answers,attribution:lead.attribution,abandonment_url:resumeUrl,resume_url:resumeUrl,
           }) : Promise.resolve(),
-          hasDirectSync ? syncLeadDirect(lead, contactId || undefined) : Promise.resolve(),
+          hasDirectSync ? syncLeadDirect(lead, appOrigin, contactId || undefined) : Promise.resolve(),
         ]);
         if (contactId && hasDirectSync && deliveries[1].status === 'rejected')
             throw new Error('Could not update the saved CRM contact with assessment answers');

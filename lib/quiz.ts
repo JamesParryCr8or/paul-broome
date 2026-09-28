@@ -103,6 +103,7 @@ const allowedAnswers = Object.fromEntries(
   questions.map(question => [question.id, z.enum(question.options.map(option => option.value) as [string, ...string[]])]),
 ) as unknown as Record<QuestionId, z.ZodType<string>>;
 const answerSchema = z.object(allowedAnswers);
+export const partialAnswersSchema = answerSchema.partial();
 const phoneSchema = z.string().trim().min(10).max(22).regex(/^[+()\d\s.-]+$/).refine(value => value.replace(/\D/g, '').length >= 10);
 
 export const leadSchema = z.object({

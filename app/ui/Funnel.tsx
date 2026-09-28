@@ -10,7 +10,7 @@ import {
   ShieldCheck, Sparkles, Sun, Target, TrendingUp, TreePine, UserRound, UsersRound, Video,
   Wrench, type LucideIcon,
 } from 'lucide-react';
-import { questions, type Answers, type QuestionId } from '@/lib/quiz';
+import { assess, questions, type Answers, type QuestionId } from '@/lib/quiz';
 import { trackLeadOnce } from '@/lib/lead-tracking';
 // Country dialling codes adapted from annexare/Countries (MIT), limited to the picker fields.
 import countryData from '@/lib/country-codes.json';
@@ -294,6 +294,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const submissionId = useRef('');
   const ghlContactId = useRef('');
   const ghlContactToken = useRef('');
+  const latestAnswers = useRef<Partial<Answers>>({});
+  const progressQueue = useRef<Promise<void>>(Promise.resolve());
   const attribution = useRef<Record<string, string>>({});
   const advanceTimer = useRef<number | null>(null);
   const squeezeSubmissionStarted = useRef(false);
@@ -321,7 +323,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
       if (draft?.funnel === (squeeze ? 'squeeze' : 'homepage') && Date.now() - draft.savedAt < 30 * 86400000) {
         const validViews: View[] = squeeze ? ['squeeze', 'quiz', 'contact', 'booking'] : ['intro', 'quiz', 'name', 'company', 'contact', 'booking'];
         if (validViews.includes(draft.view)) {
-          if (draft.answers && typeof draft.answers === 'object') setAnswers(draft.answers);
+          if (draft.answers && typeof draft.answers === 'object') { setAnswers(draft.answers); latestAnswers.current = draft.answers; }
           if (draft.contact && typeof draft.contact === 'object') setContact(current => ({ ...current, ...draft.contact, website: '' }));
           if (Number.isInteger(draft.questionIndex)) setQuestionIndex(Math.max(0, Math.min(questions.length - 1, draft.questionIndex)));
           if (draft.view !== 'booking' || draft.result) {
@@ -340,9 +342,49 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     }
     attribution.current.landing_path = location.pathname;
     try { attribution.current.referrer = document.referrer ? new URL(document.referrer).origin : ''; } catch {}
-    setDraftReady(true);
+    const resumeContactId = params.get('pb_contact_id') || '';
+    const resumeToken = params.get('pb_resume_token') || '';
+    if (validCandidate && resumeContactId && resumeToken && !preview) {
+      void (async () => {
+        try {
+          const response = await fetch('/api/leads/progress', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'restore', id: validCandidate, contactId: resumeContactId, contactToken: resumeToken }),
+          });
+          if (!response.ok) throw new Error('Unable to restore assessment');
+          const saved = await response.json();
+          const restored = saved.answers as Partial<Answers>;
+          latestAnswers.current = restored;
+          setAnswers(restored);
+          const phone = String(saved.phone || '').replace(/\D/g, '');
+          const country = [...countryCodes].sort((a, b) => String(b.phone[0] || '').length - String(a.phone[0] || '').length)
+            .find(item => item.phone.some(code => phone.startsWith(String(code))));
+          const countryCode = `+${country?.phone.find(code => phone.startsWith(String(code))) || 44}`;
+          setContact(current => ({ ...current, firstName: saved.firstName || '', lastName: saved.lastName || '',
+            email: saved.email || '', countryCode, countryIso: country?.iso || 'GB',
+            phone: phone.slice(countryCode.length - 1), website: '' }));
+          ghlContactId.current = resumeContactId;
+          ghlContactToken.current = resumeToken;
+          localStorage.setItem(`pb_ghl_contact_${validCandidate}`, JSON.stringify({ contactId: resumeContactId, contactToken: resumeToken }));
+          const requested = params.get('pb_step') || '';
+          const requestedIndex = questions.findIndex(item => item.id === requested);
+          const firstUnanswered = questions.findIndex(item => !restored[item.id]);
+          if (requested === 'booking' && firstUnanswered < 0) {
+            setResult({ ...assess(restored as Answers), preview: false, route: 'training' });
+            setView('booking');
+          } else {
+            const index = firstUnanswered < 0 ? questions.length - 1 : requestedIndex < 0 ? firstUnanswered : Math.min(requestedIndex, firstUnanswered);
+            setQuestionIndex(index);
+            setView('quiz');
+          }
+        } catch (restoreError) {
+          console.error('[assessment] restore failed', restoreError);
+          setError('We could not reload your saved answers. Your progress on this device is still available.');
+        } finally { setDraftReady(true); }
+      })();
+    } else setDraftReady(true);
     track('sales_leak_page_view');
-  }, [squeeze]);
+  }, [preview, squeeze]);
 
   useEffect(() => {
     if (!draftReady || !submissionId.current) return;
@@ -496,6 +538,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
 
   function selectAnswer(id: QuestionId, value: string) {
     if (advancing) return;
+    latestAnswers.current = { ...latestAnswers.current, [id]: value };
     setAnswers(current => ({ ...current, [id]: value }));
     track('sales_leak_answer', { question: id, answer: value });
     if (!isMultiSelect(question)) {
@@ -510,6 +553,18 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
 
   function advanceQuestion() {
     setError('');
+    const nextStep = questionIndex < questions.length - 1 ? questions[questionIndex + 1].id : 'contact';
+    if (ghlContactId.current && ghlContactToken.current && !preview) {
+      const payload = { action: 'update', id: submissionId.current, contactId: ghlContactId.current,
+        contactToken: ghlContactToken.current, step: nextStep, answers: latestAnswers.current };
+      progressQueue.current = progressQueue.current.catch(() => {}).then(async () => {
+        const response = await fetch('/api/leads/progress', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true,
+        });
+        if (!response.ok) throw new Error(`Progress save status ${response.status}`);
+      });
+      void progressQueue.current.catch(error => console.error('[assessment] progress save failed', error));
+    }
     if (questionIndex < questions.length - 1) {
       if (!squeeze && questionIndex === 1) {
         setView('name');
@@ -532,6 +587,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   async function submit() {
     setBusy(true);
     try {
+      await progressQueue.current.catch(() => {});
       const response = await fetch('/api/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: submissionId.current, answers, ...contact, name: fullName, phone: fullPhone, marketing: false, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),

@@ -1,8 +1,9 @@
 import postgres from 'postgres';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { assess, label, type Lead, type Answers, type QuestionId } from './quiz';
-import { diagnosticFieldLabels, diagnosticValue, type DiagnosticAnswers, type DiagnosticSave } from './diagnostic';
+import { diagnosticFieldLabels, diagnosticRawValue, diagnosticValue, type DiagnosticAnswers, type DiagnosticSave } from './diagnostic';
 import { assessmentGhlFields, diagnosticGhlFields } from './ghl-fields';
+import { answersFromGhlFields, assessmentResumeUrl, formUrlFieldId } from './assessment-resume';
 let client: ReturnType<typeof postgres> | undefined;
 const assessmentWorkflowId = '1666b6d0-8721-40fc-afe5-cebccaa39dde';
 const diagnosticWorkflowId = '2d5ea5b0-50dc-4613-89ab-b99f2b80b3e1';
@@ -110,10 +111,66 @@ async function updateGhl(contactId: string, lead: Lead) {
     console.info('[ghl] assessment contact updated', { contactId });
     return contactId;
 }
-export async function createSqueezeGhlContact(contact: {name:string;email:string;phone:string}) {
+export async function createSqueezeGhlContact(contact: {id:string;name:string;email:string;phone:string}, origin: string) {
     const contactId = await upsertGhl(contact.name,contact.email,contact.phone,undefined,'Paul Broome Sales Leak Assessment',{},assessmentGhlFields);
     await addGhlTag(contactId, 'cr8or_ai_squeeze_page');
+    await updateAssessmentProgress(contactId, contact.id, {}, 'adSpend', origin, true);
     return contactId;
+}
+export async function updateAssessmentProgress(contactId: string, submissionId: string, answers: Partial<Answers>, step: string, origin: string, squeeze: boolean) {
+    const token = ghlToken();
+    if (!token) throw new Error('CRM not configured');
+    const values = Object.fromEntries(Object.entries(answers).filter((entry): entry is [string,string] => typeof entry[1] === 'string').map(([key,value]) => [key,label(key as QuestionId,value)]));
+    const resumeUrl = assessmentResumeUrl(origin, submissionId, step, contactId, signGhlContactId(submissionId, contactId), squeeze);
+    const response = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(contactId)}`, {
+        method:'PUT', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
+        body:JSON.stringify({customFields:[...customFields(values,assessmentGhlFields),{id:formUrlFieldId,fieldValue:resumeUrl}]}),
+        signal:AbortSignal.timeout(12000),
+    });
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`CRM assessment progress status ${response.status}${body ? `: ${body.slice(0,500)}` : ''}`);
+    }
+    console.info('[ghl] assessment progress saved', { contactId, submissionId, step });
+}
+export async function getAssessmentProgress(contactId: string) {
+    const token = ghlToken();
+    if (!token) throw new Error('CRM not configured');
+    const response = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(contactId)}`, {
+        headers:{Authorization:`Bearer ${token}`,Version:'v3',Accept:'application/json'}, signal:AbortSignal.timeout(12000),
+    });
+    if (!response.ok) throw new Error(`CRM contact lookup status ${response.status}`);
+    const contact = (await response.json()).contact as Record<string,unknown> | undefined;
+    if (!contact || contact.locationId !== process.env.GHL_LOCATION_ID) throw new Error('CRM contact not found in this location');
+    return {
+        firstName: String(contact.firstName || ''), lastName: String(contact.lastName || ''),
+        email: String(contact.email || ''), phone: String(contact.phone || ''),
+        answers: answersFromGhlFields(contact.customFields ?? contact.customField),
+    };
+}
+export async function getDiagnosticProgress(contactId: string) {
+    const token = ghlToken();
+    if (!token) throw new Error('CRM not configured');
+    const response = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(contactId)}`, {
+        headers:{Authorization:`Bearer ${token}`,Version:'v3',Accept:'application/json'}, signal:AbortSignal.timeout(12000),
+    });
+    if (!response.ok) throw new Error(`CRM contact lookup status ${response.status}`);
+    const contact = (await response.json()).contact as Record<string,unknown> | undefined;
+    if (!contact || contact.locationId !== process.env.GHL_LOCATION_ID) throw new Error('CRM contact not found in this location');
+    const values = new Map<string,string>();
+    const fields = contact.customFields ?? contact.customField;
+    if (Array.isArray(fields)) for (const field of fields) {
+        const entry = field as Record<string,unknown>;
+        const id = String(entry.id || entry.fieldId || '');
+        const value = entry.fieldValue ?? entry.value;
+        if (id && (typeof value === 'string' || typeof value === 'number')) values.set(id, String(value));
+    }
+    const answers: DiagnosticAnswers = {};
+    for (const [key,id] of Object.entries(diagnosticGhlFields)) {
+        const value = values.get(id);
+        if (value) Object.assign(answers,{[key]:diagnosticRawValue(value)});
+    }
+    return { answers, fullName: [contact.firstName,contact.lastName].filter(Boolean).join(' '), email: String(contact.email || '') };
 }
 async function addGhlTag(contactId: string, tag = funnelTag) {
     const token = ghlToken();
@@ -127,11 +184,12 @@ async function addGhlTag(contactId: string, tag = funnelTag) {
     }
     console.info('[ghl] funnel tag applied', { contactId, tag });
 }
-export async function syncLeadDirect(lead: Lead, existingContactId?: string) {
+export async function syncLeadDirect(lead: Lead, origin: string, existingContactId?: string) {
     const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
     const contactId = existingContactId ? await updateGhl(existingContactId,lead) : await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
     if (!existingContactId) console.info('[ghl] assessment contact upserted', { contactId });
     await addGhlTag(contactId);
+    await updateAssessmentProgress(contactId, lead.id, lead.answers, 'booking', origin, Boolean(existingContactId));
     // The assessment is already saved. A follow-up automation failure must not
     // tell the visitor to resubmit their answers or block the booking screen.
     try {
@@ -142,10 +200,19 @@ export async function syncLeadDirect(lead: Lead, existingContactId?: string) {
         });
     }
 }
-export async function syncDiagnosticDirect(diagnostic: DiagnosticSave) {
+export async function syncDiagnosticDirect(diagnostic: DiagnosticSave, origin: string) {
     if (!diagnostic.email&&!diagnostic.phone) return;
     const values=Object.fromEntries(Object.entries(diagnostic.answers as DiagnosticAnswers).map(([key,value])=>[key,diagnosticValue(value)]));
     const contactId = await upsertGhl(diagnostic.fullName,diagnostic.email,diagnostic.phone,undefined,'Paul Broome Pre-Call Diagnostic',values,diagnosticGhlFields);
+    const url = new URL(diagnosticResumeUrl(origin, diagnostic));
+    url.searchParams.set('pb_step', diagnostic.completed ? 'complete' : String(diagnostic.currentStep));
+    url.searchParams.set('pb_contact_id', contactId);
+    url.searchParams.set('pb_resume_token', signGhlContactId(diagnostic.id, contactId));
+    const progress = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(contactId)}`, {
+        method:'PUT', headers:{Authorization:`Bearer ${ghlToken()}`,Version:'v3','Content-Type':'application/json'},
+        body:JSON.stringify({customFields:[{id:formUrlFieldId,fieldValue:url.toString()}]}), signal:AbortSignal.timeout(12000),
+    });
+    if (!progress.ok) throw new Error(`CRM diagnostic progress status ${progress.status}`);
     console.info('[ghl] diagnostic contact upserted', { contactId, completed: diagnostic.completed });
     await addGhlTag(contactId);
     if (diagnostic.completed) await enrolGhlWorkflow(contactId, diagnosticWorkflowId);

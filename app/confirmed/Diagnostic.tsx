@@ -151,7 +151,37 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
     } catch {}
     setLeadId(id);
     revision.current = Date.now();
-    hydrated.current = true;
+    const params = new URLSearchParams(location.search);
+    const contactId = params.get('pb_contact_id');
+    const contactToken = params.get('pb_resume_token');
+    if (contactId && contactToken && id && !preview) {
+      void (async () => {
+        try {
+          const response = await fetch('/api/diagnostic/progress', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id,contactId,contactToken}),
+          });
+          if (!response.ok) throw new Error(`Restore status ${response.status}`);
+          const saved = await response.json();
+          const restored = saved.answers as DiagnosticAnswers;
+          setAnswers(restored);
+          if (saved.fullName) setFullName(saved.fullName);
+          if (saved.email) setEmail(saved.email);
+          const requested = params.get('pb_step');
+          if (requested === 'complete') setView('complete');
+          else {
+            const requestedIndex = requested === null ? 0 : Number(requested);
+            const visible = questions.filter(question => question.id !== 'coachingDetails' || restored.coachingInvestment === 'yes');
+            const firstUnanswered = visible.findIndex(question => !restored[question.id]);
+            setQuestionIndex(Math.max(0, Math.min(visible.length - 1, firstUnanswered < 0 ? requestedIndex : Number.isInteger(requestedIndex) ? Math.min(requestedIndex, firstUnanswered) : firstUnanswered)));
+            setView('question');
+          }
+        } catch (restoreError) {
+          console.error('[diagnostic] restore failed', restoreError);
+          setError('We could not reload your saved answers. Your progress on this device is still available.');
+        } finally { hydrated.current = true; }
+      })();
+    } else hydrated.current = true;
     let retry: number | undefined;
     if (!preview) {
       trackSchedulePixel(id);

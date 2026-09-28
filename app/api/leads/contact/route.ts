@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   if (process.env.LEAD_CAPTURE_ENABLED !== 'true') return Response.json({ preview: true });
   if (!hasGhlDirectSync()) return Response.json({ error: 'Enquiries are temporarily unavailable. Please try again shortly.' }, { status: 503 });
   try {
-    const contactId = await createSqueezeGhlContact(parsed.data);
+    const contactId = await createSqueezeGhlContact(parsed.data, process.env.APP_ORIGIN || new URL(request.url).origin);
     return Response.json({ preview: false, contactId, contactToken: signGhlContactId(parsed.data.id, contactId) });
   } catch (error) {
     console.error('[lead capture] initial contact creation failed', error);
