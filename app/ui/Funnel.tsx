@@ -15,7 +15,12 @@ import { trackLeadOnce } from '@/lib/lead-tracking';
 
 type View = 'intro' | 'squeeze' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
-type Contact = { name: string; company: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
+type Contact = { firstName: string; lastName: string; company: string; countryCode: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
+const countryCodes = [
+  { country: 'United Kingdom', code: '+44' }, { country: 'United States', code: '+1' },
+  { country: 'Ireland', code: '+353' }, { country: 'Australia', code: '+61' },
+  { country: 'New Zealand', code: '+64' }, { country: 'Other', code: '+' },
+];
 
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
 const PAUL_IMAGE_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778607882/pb_hero_dark_gold_paul_seated_de99e3be_za0tpd.webp';
@@ -213,7 +218,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const [view, setView] = useState<View>(() => squeeze ? 'squeeze' : 'intro');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Partial<Answers>>({});
-  const [contact, setContact] = useState<Contact>({ name: '', company: '', phone: '', email: '', consent: true, marketing: false, website: '' });
+  const [contact, setContact] = useState<Contact>({ firstName: '', lastName: '', company: '', countryCode: '+44', phone: '', email: '', consent: true, marketing: false, website: '' });
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
   const [advancing, setAdvancing] = useState(false);
@@ -279,29 +284,31 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     headingRef.current?.focus({ preventScroll: true });
   }, [view, questionIndex]);
 
-  const firstName = contact.name.trim().split(/\s+/)[0];
-  const lastName = contact.name.trim().split(/\s+/).slice(1).join(' ');
+  const firstName = contact.firstName.trim();
+  const lastName = contact.lastName.trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(' ');
+  const fullPhone = contact.countryCode + contact.phone.replace(/\D/g, '').replace(/^0+/, '');
   const confirmedUrl = useMemo(() => {
     const params = new URLSearchParams({
       pb_submission_id: submissionId.current,
       first_name: firstName,
       last_name: lastName,
       email: contact.email,
-      phone: contact.phone,
+      phone: fullPhone,
       company: contact.company,
     });
     return `/confirmed?${params.toString()}`;
-  }, [contact.company, contact.email, contact.phone, firstName, lastName, view]);
+  }, [contact.company, contact.email, fullPhone, firstName, lastName, view]);
   const calendarUrl = useMemo(() => {
     const next = new URL(BOOKING_CALENDAR_URL);
     next.searchParams.set('first_name', firstName);
     next.searchParams.set('last_name', lastName);
     next.searchParams.set('email', contact.email);
-    next.searchParams.set('phone', contact.phone);
+    next.searchParams.set('phone', fullPhone);
     next.searchParams.set('company', contact.company);
     next.searchParams.set('pb_submission_id', submissionId.current);
     return next.toString();
-  }, [contact.company, contact.email, contact.phone, firstName, lastName, view]);
+  }, [contact.company, contact.email, fullPhone, firstName, lastName, view]);
 
   useEffect(() => {
     if (view !== 'booking') return;
@@ -356,7 +363,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
       try {
         const response = await fetch('/api/leads/contact', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: submissionId.current, name: contact.name, email: contact.email, phone: contact.phone, consent: contact.consent, marketing: contact.marketing, website: contact.website }),
+          body: JSON.stringify({ id: submissionId.current, name: fullName, email: contact.email, phone: fullPhone, consent: contact.consent, marketing: false, website: contact.website }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'We couldn’t save your contact details. Please try again.');
@@ -422,7 +429,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     try {
       const response = await fetch('/api/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: submissionId.current, answers, ...contact, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),
+        body: JSON.stringify({ id: submissionId.current, answers, ...contact, name: fullName, phone: fullPhone, marketing: false, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'We couldn’t prepare your result. Please try again.');
@@ -514,9 +521,10 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
               <h1 ref={headingRef} tabIndex={-1}>Are You Making This <em>£660K</em> Sales Mistake?</h1>
               <p className="squeeze-lead">Answer a few questions to see where deals may be slipping away—and what to fix first.</p>
               <form className="details-form squeeze-form" onSubmit={saveSqueeze}>
-                <label><span>Your name *</span><input required minLength={2} autoFocus autoComplete="name" value={contact.name} onChange={e => setContact({...contact, name:e.target.value})} placeholder="e.g. David Smith" /></label>
+                <label><span>First name *</span><input required minLength={2} autoFocus autoComplete="given-name" value={contact.firstName} onChange={e => setContact({...contact, firstName:e.target.value})} placeholder="e.g. David" /></label>
+                <label><span>Last name *</span><input required minLength={2} autoComplete="family-name" value={contact.lastName} onChange={e => setContact({...contact, lastName:e.target.value})} placeholder="e.g. Smith" /></label>
                 <label><span>Email *</span><input required type="email" autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
-                <label><span>Phone *</span><input required type="tel" minLength={10} maxLength={22} autoComplete="tel" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="Your best contact number" /></label>
+                <label><span>Phone *</span><span className="phone-input"><select aria-label="Country calling code" value={contact.countryCode} onChange={e => setContact({...contact, countryCode:e.target.value})}>{countryCodes.map(item => <option key={item.country} value={item.code}>{item.country} ({item.code})</option>)}</select><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Saving your details…' : <>Start my assessment <ArrowRight size={19}/></>}</button>
                 <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
@@ -541,7 +549,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
               <p className="eyebrow compact"><span/> ABOUT YOU</p>
               <h1 ref={headingRef} tabIndex={-1}>What’s your first name?</h1>
               <form className="details-form single-field-form" onSubmit={saveName}>
-                <label><span>First name *</span><input required minLength={2} autoFocus autoComplete="given-name" value={contact.name} onChange={e => setContact({...contact, name:e.target.value})} placeholder="e.g. David" /></label>
+                <label><span>First name *</span><input required minLength={2} autoFocus autoComplete="given-name" value={contact.firstName} onChange={e => setContact({...contact, firstName:e.target.value})} placeholder="e.g. David" /></label>
+                <label><span>Last name *</span><input required minLength={2} autoComplete="family-name" value={contact.lastName} onChange={e => setContact({...contact, lastName:e.target.value})} placeholder="e.g. Smith" /></label>
                 <button className="primary-cta" type="submit">Continue <ArrowRight size={19}/></button>
               </form>
               <button className="back-link" onClick={back}><ArrowLeft size={16}/> Back</button>
@@ -644,8 +653,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
               <p className="eyebrow compact"><span/> FINAL STEP</p>
               <h1 ref={headingRef} tabIndex={-1}>See where {contact.company || 'your business'} is losing sales.</h1>
               <form className="details-form" onSubmit={saveContact}>
-                <label><span>Email *</span><input required type="email" autoFocus autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
-                <label><span>Phone *</span><input required type="tel" minLength={10} maxLength={22} autoComplete="tel" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="Your best contact number" /></label>
+                <label><span>Email *</span><input required type="email" autoFocus autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="e.g. david@company.co.uk" /></label>
+                <label><span>Phone *</span><span className="phone-input"><select aria-label="Country calling code" value={contact.countryCode} onChange={e => setContact({...contact, countryCode:e.target.value})}>{countryCodes.map(item => <option key={item.country} value={item.code}>{item.country} ({item.code})</option>)}</select><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
                 {error && <p className="form-error" role="alert">{error}</p>}
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Preparing your result…' : 'YES! I WANT TO FIX MY CLOSE RATE'}{!busy && <ArrowRight size={19}/>}</button>

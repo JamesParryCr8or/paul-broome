@@ -29,9 +29,10 @@
   };
   if (isSqueeze) {
     checkConsent();
-    await fill('input[autocomplete=name]', 'Browser Test');
+    await fill('input[autocomplete=given-name]', 'Browser');
+    await fill('input[autocomplete=family-name]', 'Test');
     await fill('input[autocomplete=email]', 'browser@example.com');
-    await fill('input[autocomplete=tel]', '07700900123');
+    await fill('input[autocomplete=tel-national]', '7700900123');
     await submit();
     if(events.filter(e=>e[1]==='Lead').length!==1) throw Error('Squeeze did not fire exactly one Lead');
   } else {
@@ -40,7 +41,7 @@
     if(events.some(e=>e[1]==='Lead')) throw Error('Lead fired before contact submission');
   }
   for(let i=0;i<20 && !document.querySelector('.booking-shell');i++) {
-    if(document.querySelector('input[autocomplete=given-name]')) { await fill('input[autocomplete=given-name]', 'Browser Test'); await submit(); }
+    if(document.querySelector('input[autocomplete=given-name]')) { await fill('input[autocomplete=given-name]', 'Browser'); await fill('input[autocomplete=family-name]', 'Test'); await submit(); }
     if(document.querySelector('input[autocomplete=organization]')) { await fill('input[autocomplete=organization]', 'Test Company'); await submit(); }
     if(document.querySelector('.option-card')) {
       document.querySelector('.option-card').click();
@@ -51,7 +52,7 @@
       checkConsent();
       if(events.some(e=>e[1]==='Lead')) throw Error('Premature Lead');
       await fill('input[autocomplete=email]', 'normal@example.com');
-      await fill('input[autocomplete=tel]', '07700900123');
+      await fill('input[autocomplete=tel-national]', '7700900123');
       await submit();
     } else await pause(350);
   }

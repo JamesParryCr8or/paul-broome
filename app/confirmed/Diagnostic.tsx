@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, BadgePoundSterling, BarChart3, BriefcaseBusiness, Check, CheckCircle2,
   ChevronRight, CircleDollarSign, Clock3, Gauge, HandCoins, HeartHandshake, Lightbulb,
@@ -11,7 +11,7 @@ import {
 import type { DiagnosticAnswers } from '@/lib/diagnostic';
 
 type InitialIdentity = { submissionId: string; fullName: string; email: string; phone: string };
-type View = 'intro' | 'details' | 'question' | 'complete';
+type View = 'intro' | 'question' | 'complete';
 type AnswerId = keyof DiagnosticAnswers;
 type Choice = { value: string; label: string; note?: string; icon: LucideIcon };
 type DiagnosticQuestion = {
@@ -129,8 +129,8 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
   const activeQuestions = useMemo(() => questions.filter(question => question.id !== 'coachingDetails' || answers.coachingInvestment === 'yes'), [answers.coachingInvestment]);
   const currentQuestion = activeQuestions[Math.min(questionIndex, activeQuestions.length - 1)];
   const currentValue = currentQuestion ? answers[currentQuestion.id] || '' : '';
-  const totalScreens = activeQuestions.length + 1;
-  const progress = view === 'details' ? 0 : Math.round(((questionIndex + 1) / totalScreens) * 100);
+  const totalScreens = activeQuestions.length;
+  const progress = Math.round(((questionIndex + 1) / totalScreens) * 100);
 
   useEffect(() => {
     let id = initial.submissionId;
@@ -195,11 +195,7 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
     headingRef.current?.focus({preventScroll:true});
   }, [questionIndex, view]);
 
-  function start() { setView('details'); track('diagnostic_started', { submission_id:leadId }); }
-  function confirmDetails(event: FormEvent) {
-    event.preventDefault(); setError(''); setView('question'); setQuestionIndex(0);
-    track('diagnostic_identity_confirmed', { submission_id:leadId });
-  }
+  function start() { setError(''); setView('question'); setQuestionIndex(0); track('diagnostic_started', { submission_id:leadId }); }
   function setAnswer(id: AnswerId, value: string) {
     setAnswers(current => ({...current,[id]:value}));
     track('diagnostic_answer', { question:id, submission_id:leadId });
@@ -238,8 +234,7 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
   }
   function back() {
     setError('');
-    if (view === 'details') setView('intro');
-    else if (view === 'question' && questionIndex === 0) setView('details');
+    if (view === 'question' && questionIndex === 0) setView('intro');
     else if (view === 'question') setQuestionIndex(index => Math.max(0,index-1));
   }
 
@@ -262,24 +257,6 @@ export default function Diagnostic({ initial, preview }: { initial: InitialIdent
         <div className="diagnostic-video-wrap">
           <div className="video-label"><PlayCircle size={16}/><span>A quick message from Paul</span></div>
           <HlsVideo />
-        </div>
-      </section>}
-
-      {view === 'details' && <section className="diagnostic-form-shell">
-        <div className="diagnostic-progress"><div><span>Confirm your details</span><strong>Ready to begin</strong></div><i><b style={{width:'4%'}}/></i></div>
-        <div className="diagnostic-card identity-card">
-          <aside><DiagnosticGraphic icon={UserCheck} step={0}/><p>We use these details to reconnect your diagnostic to the call you have just booked.</p></aside>
-          <div className="diagnostic-question">
-            <p className="eyebrow compact"><span/> BEFORE WE BEGIN</p>
-            <h1 ref={headingRef} tabIndex={-1}>Confirm it’s you.</h1>
-            <p className="diagnostic-hint">Your booking details may already be filled in. Check they are correct, then continue.</p>
-            <form className="diagnostic-details" onSubmit={confirmDetails}>
-              <label><span>Full name *</span><input required minLength={2} autoComplete="name" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Your full name"/></label>
-              <label><span>Email *</span><input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.co.uk"/></label>
-              <button className="primary-cta" type="submit">Begin diagnostic <ArrowRight size={19}/></button>
-            </form>
-            <button className="back-link" onClick={back}><ArrowLeft size={16}/> Back</button>
-          </div>
         </div>
       </section>}
 
