@@ -33,7 +33,7 @@ function CountryCodePicker({ value, iso, onChange }: { value: string; iso: strin
     || country.iso.toLocaleLowerCase() === normalized
     || (country.iso === 'GB' && normalized === 'uk')
     || country.phone.some(code => String(code).startsWith(normalized)),
-  ).slice(0, 12) : countryCodes.slice(0, 12);
+  ) : countryCodes;
   const choose = (country: CountryDialCode) => {
     onChange(country);
     setQuery('');
