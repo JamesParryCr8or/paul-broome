@@ -17,6 +17,18 @@ export async function POST(request: Request) {
   const actual = Buffer.from(createHash('sha256').update(suppliedKey).digest('hex'), 'hex');
   const expected = Buffer.from(recoveryKeyHash, 'hex');
   if (!timingSafeEqual(actual, expected)) return Response.json({ error: 'Forbidden.' }, { status: 403 });
+  if (request.headers.get('x-recovery-inspect') === '1') {
+    const token = process.env.GHL_PRIVATE_ACCESS_TOKEN || process.env.GHL_PRIVATE_INTEGRATION_KEY;
+    if (!token) return Response.json({ error: 'CRM unavailable.' }, { status: 503 });
+    const lookup = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+      headers: { Authorization: `Bearer ${token}`, Version: 'v3', Accept: 'application/json' },
+      signal: AbortSignal.timeout(12000),
+    });
+    const details = await lookup.json().catch(() => ({}));
+    return Response.json({ configuredLocation: process.env.GHL_LOCATION_ID,
+      lookupStatus: lookup.status, contactLocation: details.contact?.locationId,
+      error: lookup.ok ? undefined : String(details.message || details.error || '').slice(0, 200) });
+  }
   try {
     await enrolGhlWorkflow(contactId, workflowId);
     return Response.json({ enrolled: true, submissionId });
