@@ -6,6 +6,7 @@ import { assessmentGhlFields, diagnosticGhlFields } from './ghl-fields';
 import { answersFromGhlFields, assessmentResumeUrl, formUrlFieldId } from './assessment-resume';
 let client: ReturnType<typeof postgres> | undefined;
 const assessmentWorkflowId = '1666b6d0-8721-40fc-afe5-cebccaa39dde';
+const contactWorkflowId = '89d5d11d-7b0d-4ed3-82ba-10740a1ae8d2';
 const diagnosticWorkflowId = '2d5ea5b0-50dc-4613-89ab-b99f2b80b3e1';
 const funnelTag = 'cr8or_ai_funnel';
 export function db() { if (!process.env.DATABASE_URL)
@@ -115,6 +116,11 @@ export async function createSqueezeGhlContact(contact: {id:string;name:string;em
     const contactId = await upsertGhl(contact.name,contact.email,contact.phone,undefined,'Paul Broome Sales Leak Assessment',{},assessmentGhlFields);
     await addGhlTag(contactId, 'cr8or_ai_squeeze_page');
     await updateAssessmentProgress(contactId, contact.id, {}, 'adSpend', origin, true);
+    try {
+        await enrolGhlWorkflow(contactId, contactWorkflowId);
+    } catch (error) {
+        console.error('[ghl] contact saved but contact workflow enrolment failed', {contactId,workflowId:contactWorkflowId,error:String(error)});
+    }
     return contactId;
 }
 export async function updateAssessmentProgress(contactId: string, submissionId: string, answers: Partial<Answers>, step: string, origin: string, squeeze: boolean) {
@@ -190,6 +196,14 @@ export async function syncLeadDirect(lead: Lead, origin: string, existingContact
     if (!existingContactId) console.info('[ghl] assessment contact upserted', { contactId });
     await addGhlTag(contactId);
     await updateAssessmentProgress(contactId, lead.id, lead.answers, 'booking', origin, Boolean(existingContactId));
+    // Squeeze contacts entered this workflow when their details were first saved.
+    if (!existingContactId) {
+        try {
+            await enrolGhlWorkflow(contactId, contactWorkflowId);
+        } catch (error) {
+            console.error('[ghl] contact saved but contact workflow enrolment failed', {contactId,workflowId:contactWorkflowId,error:String(error)});
+        }
+    }
     // The assessment is already saved. A follow-up automation failure must not
     // tell the visitor to resubmit their answers or block the booking screen.
     try {
