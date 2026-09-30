@@ -73,7 +73,7 @@ function customFields(values: Record<string,string>, fields: Record<string,strin
 async function enrolGhlWorkflow(contactId: string, workflowId: string) {
     const token = ghlToken();
     // HighLevel requires an explicit numeric timezone offset for this field.
-    const eventStartTime = new Date().toISOString().replace(/Z$/, '+00:00');
+    const eventStartTime = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
     const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/workflow/${workflowId}`, {
         method:'POST', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
         body:JSON.stringify({eventStartTime}), signal:AbortSignal.timeout(12000),

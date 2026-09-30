@@ -41,7 +41,7 @@ test('both funnels enter the contact workflow once when details are saved', asyn
     assert.equal(calls.filter(call => JSON.stringify(call.body).includes('cr8or_ai_squeeze_page')).length, 1);
     const assessmentWorkflowCalls = calls.filter(call => call.url.includes('/workflow/1666b6d0-8721-40fc-afe5-cebccaa39dde'));
     assert.equal(assessmentWorkflowCalls.length, 1);
-    assert.match(String(assessmentWorkflowCalls[0].body.eventStartTime), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+00:00$/);
+    assert.match(String(assessmentWorkflowCalls[0].body.eventStartTime), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/);
     await syncLeadDirect({ id: '095e903d-b4ca-435c-8a1d-2007548b68c2', name: 'Homepage Owner', email: 'home@example.com', phone: '07700900124', company: '', answers: {} } as Lead, 'https://example.com');
     assert.equal(calls.filter(call => call.url.includes(contactWorkflowPath)).length, 2);
     assert.equal(calls.filter(call => call.url.includes('/workflow/1666b6d0-8721-40fc-afe5-cebccaa39dde')).length, 2);
@@ -51,7 +51,7 @@ test('both funnels enter the contact workflow once when details are saved', asyn
     assert.match(String(diagnosticUrl), /^https:\/\/example.com\/confirmed\?.*pb_step=complete.*pb_contact_id=test-contact/);
     const diagnosticWorkflowCall = calls.find(call => call.url.includes('/workflow/2d5ea5b0-50dc-4613-89ab-b99f2b80b3e1'));
     assert.ok(diagnosticWorkflowCall);
-    assert.match(String(diagnosticWorkflowCall.body.eventStartTime), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+00:00$/);
+    assert.match(String(diagnosticWorkflowCall.body.eventStartTime), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/);
     failWorkflow = true;
     await assert.doesNotReject(() => syncLeadDirect({ id: '095e903d-b4ca-435c-8a1d-2007548b68c1', name: 'Test Owner', email: 'test@example.com', phone: '07700900123', company: '', answers: {} } as Lead, 'https://example.com', contactId));
     failContact = true;
