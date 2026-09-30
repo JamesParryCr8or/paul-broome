@@ -70,7 +70,7 @@ export function isTrustedRequestOrigin(request: Request) {
     return trusted.has(origin);
 }
 function customFields(values: Record<string,string>, fields: Record<string,string>) { return Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key,id]) => ({id,fieldValue:values[key]})); }
-export async function enrolGhlWorkflow(contactId: string, workflowId: string) {
+async function enrolGhlWorkflow(contactId: string, workflowId: string) {
     const token = ghlToken();
     // HighLevel requires an explicit numeric timezone offset for this field.
     const eventStartTime = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
