@@ -1,5 +1,4 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { formUrlFieldId } from '@/lib/assessment-resume';
 import { enrolGhlWorkflow } from '@/lib/server';
 
 export const runtime = 'nodejs';
@@ -18,26 +17,9 @@ export async function POST(request: Request) {
   const actual = Buffer.from(createHash('sha256').update(suppliedKey).digest('hex'), 'hex');
   const expected = Buffer.from(recoveryKeyHash, 'hex');
   if (!timingSafeEqual(actual, expected)) return Response.json({ error: 'Forbidden.' }, { status: 403 });
-  const token = process.env.GHL_PRIVATE_ACCESS_TOKEN || process.env.GHL_PRIVATE_INTEGRATION_KEY;
-  if (!token) return Response.json({ error: 'CRM unavailable.' }, { status: 503 });
   try {
-    const lookup = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
-      headers: { Authorization: `Bearer ${token}`, Version: 'v3', Accept: 'application/json' },
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!lookup.ok) throw new Error(`Contact lookup status ${lookup.status}`);
-    const contact = (await lookup.json()).contact;
-    const formField = (contact?.customFields || contact?.customField || []).find((field: {id?:string;fieldId?:string}) =>
-      (field.id || field.fieldId) === formUrlFieldId);
-    const resumeUrl = new URL(String(formField?.fieldValue || formField?.value || ''));
-    if (contact?.locationId !== process.env.GHL_LOCATION_ID
-      || resumeUrl.searchParams.get('pb_submission_id') !== submissionId
-      || resumeUrl.searchParams.get('pb_contact_id') !== contactId
-      || resumeUrl.pathname !== '/squeeze') {
-      return Response.json({ error: 'Contact verification failed.' }, { status: 409 });
-    }
     await enrolGhlWorkflow(contactId, workflowId);
-    return Response.json({ enrolled: true });
+    return Response.json({ enrolled: true, submissionId });
   } catch (error) {
     console.error('[ghl] one-time contact workflow recovery failed', { contactId, error: String(error) });
     return Response.json({ error: 'Workflow enrollment failed.' }, { status: 503 });
