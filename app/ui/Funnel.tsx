@@ -679,8 +679,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
             </aside>
             <div className="form-panel">
               <p className="eyebrow compact"><span/> START YOUR ASSESSMENT</p>
-              <h1 ref={headingRef} tabIndex={-1}>Are You Making This <em>£660K</em> Sales Mistake?</h1>
-              <p className="squeeze-lead">Answer a few questions to see where deals may be slipping away—and what to fix first.</p>
+              <h1 ref={headingRef} tabIndex={-1}>How well are you converting the leads you already have?</h1>
+              <p className="squeeze-lead">Take this short assessment informed by Paul Broome’s 43+ years in home improvement sales and more than 4,000 deals personally closed.</p>
               <form className="details-form squeeze-form" onSubmit={saveSqueeze}>
                 <label><span>First name *</span><input required minLength={2} autoFocus autoComplete="given-name" value={contact.firstName} onChange={e => setContact({...contact, firstName:e.target.value})} placeholder="e.g. David" /></label>
                 <label><span>Last name *</span><input required minLength={2} autoComplete="family-name" value={contact.lastName} onChange={e => setContact({...contact, lastName:e.target.value})} placeholder="e.g. Smith" /></label>
