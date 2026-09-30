@@ -25,9 +25,19 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(12000),
     });
     const details = await lookup.json().catch(() => ({}));
+    const list = await fetch(`https://services.leadconnectorhq.com/contacts/?locationId=${process.env.GHL_LOCATION_ID}&limit=100`, {
+      headers: { Authorization: `Bearer ${token}`, Version: '2021-07-28', Accept: 'application/json' },
+      signal: AbortSignal.timeout(12000),
+    });
+    const listed = await list.json().catch(() => ({}));
+    const matchingContacts = (Array.isArray(listed.contacts) ? listed.contacts : []).filter((candidate: {customFields?:Array<{id?:string;value?:string;fieldValue?:string}>}) =>
+      candidate.customFields?.some(field => field.id === 'aGaG8axf01GwZReaf79U'
+        && String(field.value || field.fieldValue || '').includes(submissionId)));
     return Response.json({ configuredLocation: process.env.GHL_LOCATION_ID,
       lookupStatus: lookup.status, contactLocation: details.contact?.locationId,
-      error: lookup.ok ? undefined : String(details.message || details.error || '').slice(0, 200) });
+      error: lookup.ok ? undefined : String(details.message || details.error || '').slice(0, 200),
+      listStatus:list.status,listedCount:Array.isArray(listed.contacts) ? listed.contacts.length : undefined,
+      matchingIds:matchingContacts.map((candidate: {id:string}) => candidate.id) });
   }
   try {
     await enrolGhlWorkflow(contactId, workflowId);
