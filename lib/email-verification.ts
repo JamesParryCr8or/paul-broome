@@ -1,7 +1,24 @@
 type VerificationResult = {
   result?: string;
   leadConnectorRecommendation?: { isEmailValid?: boolean };
+  leadconnectorRecomendation?: { isEmailValid?: boolean };
 };
+
+function verificationDecision(value: unknown): boolean | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const recommendation = (record.leadConnectorRecommendation || record.leadconnectorRecomendation) as
+    VerificationResult['leadConnectorRecommendation'];
+  if (recommendation?.isEmailValid === false) return false;
+  if (record.result === 'undeliverable' || record.result === 'do_not_send') return false;
+  if (record.result === 'deliverable' || record.result === 'unknown' || record.result === 'catch_all') return true;
+  if (recommendation?.isEmailValid === true) return true;
+  for (const key of ['data', 'verification', 'emailVerification']) {
+    const nested = verificationDecision(record[key]);
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
+}
 
 export async function verifyGhlEmail(email: string): Promise<boolean> {
   const token = process.env.GHL_PRIVATE_ACCESS_TOKEN || process.env.GHL_PRIVATE_INTEGRATION_KEY;
@@ -18,12 +35,16 @@ export async function verifyGhlEmail(email: string): Promise<boolean> {
   });
   if (!response.ok) throw new Error(`CRM email verification status ${response.status}`);
 
-  const body = await response.json() as VerificationResult | { data?: VerificationResult };
-  const result = 'data' in body && body.data ? body.data : body as VerificationResult;
-  if (!['deliverable', 'undeliverable', 'do_not_send', 'unknown', 'catch_all'].includes(result.result || ''))
-    throw new Error('CRM email verification returned an unexpected result');
-  return result.leadConnectorRecommendation?.isEmailValid !== false
-    && result.result !== 'undeliverable' && result.result !== 'do_not_send';
+  const body: unknown = await response.json();
+  const decision = verificationDecision(body);
+  if (decision !== undefined) return decision;
+
+  // A successful but undocumented response must not strand every lead. The form's
+  // email syntax check still applies; log only field names to diagnose the shape.
+  console.warn('[lead capture] unrecognised email verification response', {
+    fields: body && typeof body === 'object' ? Object.keys(body) : [],
+  });
+  return true;
 }
 import { createHash } from 'node:crypto';
 import { db } from './server';
