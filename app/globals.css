@@ -125,7 +125,7 @@ h1[tabindex="-1"]:focus { outline:none; }
 .squeeze-form .primary-cta { margin-top:3px; }
 .squeeze-submit-card { min-height:470px; }
 .single-field-form>label { grid-column:1/-1; }
-.details-form>label:not(.check-row):not(.honey) { display:grid; gap:7px; }
+.details-form>label:not(.check-row):not(.honey) { display:grid; gap:7px; align-content:start; }
 .details-form>label>span { color:#acc0bc; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
 .details-form input:not([type=checkbox]) { width:100%; min-height:53px; padding:0 15px; color:var(--text); background:rgba(255,255,255,.045); border:1px solid rgba(148,216,207,.18); border-radius:3px; transition:border-color .2s,background .2s; }
 .phone-input,.phone-input .iti { display:block; width:100%; min-width:0; }
