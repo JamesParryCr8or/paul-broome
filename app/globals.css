@@ -131,10 +131,11 @@ h1[tabindex="-1"]:focus { outline:none; }
 .phone-input,.phone-input .iti { display:block; width:100%; min-width:0; }
 .phone-input .iti__selected-country { color:var(--text); background:rgba(114,227,214,.06); border-right:1px solid rgba(148,216,207,.18); }
 .phone-input .iti__selected-dial-code { font-size:12px; font-weight:700; }
-.phone-input .iti__dropdown-content { z-index:30; color:var(--text); background:#102725; border:1px solid rgba(148,216,207,.3); box-shadow:0 14px 32px rgba(0,0,0,.38); }
+.phone-input .iti__country-selector { z-index:30; color:var(--text); background:#102725; border:1px solid rgba(148,216,207,.3); box-shadow:0 14px 32px rgba(0,0,0,.38); }
 .phone-input .iti__country:hover,.phone-input .iti__country.iti__highlight { background:rgba(114,227,214,.12); }
 .phone-input .iti__country-name,.phone-input .iti__dial-code { color:var(--text); }
-.phone-input .iti__search-input { color:var(--text); background:#102725; }
+.details-form .phone-input .iti__search-input { min-height:42px; padding:0 34px; color:var(--text); background:#102725; border:0; border-bottom:1px solid rgba(148,216,207,.18); }
+.phone-input .iti__search-icon-svg { stroke:var(--aqua); }
 .phone-country-label { display:block; margin-top:5px; color:#8fa9a4; font-size:10px; font-weight:600; letter-spacing:.04em; }
 .details-form input:not([type=checkbox]):focus { border-color:var(--aqua); background:rgba(114,227,214,.06); outline:none; }
 .details-form input::placeholder { color:#526c68; }
@@ -189,6 +190,7 @@ h1[tabindex="-1"]:focus { outline:none; }
 .auto-advance-note { color:#6f8984; font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
 .next-cta { min-width:180px; min-height:53px; padding-inline:19px; font-size:11px; }
 .form-error { margin:14px 0 0; padding:10px 12px; color:#ffd1c8; background:rgba(172,55,37,.18); border:1px solid rgba(255,122,98,.22); font-size:10px; text-align:center; }
+.details-form .form-error { grid-column:1/-1; margin-top:0; font-size:12px; text-align:left; }
 .complete-screen { position:relative; z-index:2; width:min(900px,calc(100% - 40px)); margin:auto; padding:45px 0 70px; }
 .complete-card { padding:62px 80px; text-align:center; background:radial-gradient(circle at 50% 0,rgba(61,178,171,.14),transparent 34%),rgba(10,29,31,.92); border:1px solid var(--line); box-shadow:0 35px 100px rgba(0,0,0,.32); }
 .complete-mark { width:62px; height:62px; margin:0 auto 24px; display:grid; place-items:center; color:#09201f; background:var(--aqua); border-radius:50%; box-shadow:0 0 0 11px rgba(114,227,214,.08),0 0 40px rgba(114,227,214,.2); }
