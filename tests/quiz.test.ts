@@ -16,7 +16,7 @@ test('lower-intent answers remain eligible for the training', () => {
 
 const payload = {
   id: 'b754d126-e132-4f68-9d80-d44795c64b18', answers: ready, name: 'Test Owner', company: 'Test Roofing Ltd',
-  email: 'owner@example.com', phone: '07700900123', consent: true, marketing: false, website: '',
+  email: 'owner@example.com', phone: '+447700900123', consent: true, marketing: false, website: '',
   attribution: { utm_source: 'facebook' },
 };
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { phoneSchema } from './phone';
 
 export const questions = [
   {
@@ -104,11 +105,12 @@ const allowedAnswers = Object.fromEntries(
 ) as unknown as Record<QuestionId, z.ZodType<string>>;
 const answerSchema = z.object(allowedAnswers);
 export const partialAnswersSchema = answerSchema.partial();
-const phoneSchema = z.string().trim().min(10).max(22).regex(/^[+()\d\s.-]+$/).refine(value => value.replace(/\D/g, '').length >= 10);
-
 export const leadSchema = z.object({
   id: z.string().uuid(), answers: answerSchema,
   name: z.string().trim().min(2).max(100), company: z.string().trim().max(140).default(''),
+  // The homepage collects these separately. Preserve them rather than relying
+  // on splitting `name`, which can mis-map browser autofill or compound names.
+  firstName: z.string().trim().max(100).optional(), lastName: z.string().trim().max(100).optional(),
   email: z.string().trim().email().max(254), phone: phoneSchema,
   consent: z.literal(true), marketing: z.boolean().default(false), website: z.literal(''),
   attribution: z.record(z.string().max(40), z.string().max(500)).refine(value => Object.keys(value).length <= 20),

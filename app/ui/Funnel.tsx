@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Script from 'next/script';
+import IntlTelInput, { type IntlTelInputRef } from '@intl-tel-input/react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft, ArrowRight, BarChart3, Building2, CalendarDays, Check, ChevronRight,
@@ -12,78 +13,15 @@ import {
 } from 'lucide-react';
 import { assess, questions, type Answers, type QuestionId } from '@/lib/quiz';
 import { trackLeadOnce } from '@/lib/lead-tracking';
-// Country dialling codes adapted from annexare/Countries (MIT), limited to the picker fields.
-import countryData from '@/lib/country-codes.json';
 
 type View = 'intro' | 'squeeze' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
 type Contact = { firstName: string; lastName: string; company: string; countryCode: string; countryIso: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
-type CountryDialCode = { iso: string; name: string; phone: number[] };
-const countryCodes = (countryData as CountryDialCode[]).filter(country => country.phone.length).sort((a,b) =>
-  a.iso === 'GB' ? -1 : b.iso === 'GB' ? 1 : a.iso === 'US' ? -1 : b.iso === 'US' ? 1 : a.name.localeCompare(b.name),
-);
 
-function CountryCodePicker({ value, iso, onChange }: { value: string; iso: string; onChange: (country: CountryDialCode) => void }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const normalized = query.trim().toLocaleLowerCase().replace(/^\+/, '');
-  const displayIso = iso === 'GB' ? 'UK' : iso;
-  const matches = normalized ? countryCodes.filter(country =>
-    country.name.toLocaleLowerCase().includes(normalized)
-    || country.iso.toLocaleLowerCase() === normalized
-    || (country.iso === 'GB' && normalized === 'uk')
-    || country.phone.some(code => String(code).startsWith(normalized)),
-  ) : countryCodes;
-  const choose = (country: CountryDialCode) => {
-    onChange(country);
-    setQuery('');
-    setOpen(false);
-  };
-  return <div className="country-picker">
-    <input
-      role="combobox"
-      aria-label="Country calling code"
-      aria-expanded={open}
-      aria-controls={`country-code-options-${iso}`}
-      aria-autocomplete="list"
-      autoComplete="off"
-      value={open ? query : `+${value.replace(/^\+/, '')} ${displayIso}`}
-      placeholder="Search country, ISO code, or +dial code"
-      onFocus={() => { setQuery(''); setOpen(true); }}
-      onChange={event => {
-        const next = event.target.value;
-        setQuery(next);
-        setOpen(true);
-        const typedIso = next.trim().toLowerCase();
-        const exactIso = countryCodes.find(country => country.iso.toLowerCase() === typedIso || (country.iso === 'GB' && typedIso === 'uk'));
-        if (exactIso) choose(exactIso);
-        else if (/^\+?\d+$/.test(next.trim())) {
-          const exactCode = countryCodes.find(country => country.phone.some(code => String(code) === next.trim().replace(/^\+/, '')));
-          if (exactCode) choose(exactCode);
-        }
-      }}
-      onKeyDown={event => {
-        if (event.key === 'Escape') { setOpen(false); setQuery(''); }
-        if (event.key === 'Enter' && matches[0]) { event.preventDefault(); choose(matches[0]); }
-        if (event.key === 'ArrowDown' && matches.length) { event.preventDefault(); document.getElementById(`country-option-${matches[0].iso}`)?.focus(); }
-      }}
-      onBlur={event => {
-        if (event.relatedTarget instanceof Node && event.currentTarget.parentElement?.contains(event.relatedTarget)) return;
-        window.setTimeout(() => setOpen(false), 150);
-      }}
-    />
-    {open && <div className="country-picker-options" role="listbox" id={`country-code-options-${iso}`}>
-      {matches.length ? matches.map(country => <button
-        id={`country-option-${country.iso}`}
-        key={country.iso}
-        type="button"
-        role="option"
-        aria-selected={country.iso === iso}
-        onMouseDown={event => event.preventDefault()}
-        onClick={() => choose(country)}
-      ><span>{country.name}</span><strong>{country.iso === 'GB' ? 'UK' : country.iso} · +{country.phone[0]}</strong></button>) : <p>No matching country or code.</p>}
-    </div>}
-  </div>;
+function normaliseSavedPhone(phone: string, countryCode = '+44') {
+  if (!phone.trim()) return '';
+  if (phone.trim().startsWith('+')) return `+${phone.replace(/\D/g, '')}`;
+  return `${countryCode}${phone.replace(/\D/g, '').replace(/^0+/, '')}`;
 }
 
 const LOGO_URL = 'https://res.cloudinary.com/dzaleq73i/image/upload/q_auto/f_auto/v1778512410/6865401885221373497a2d33_hk2yba.png';
@@ -291,6 +229,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const [error, setError] = useState('');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const calendarFrameRef = useRef<HTMLIFrameElement>(null);
+  const phoneInputRef = useRef<IntlTelInputRef>(null);
   const submissionId = useRef('');
   const ghlContactId = useRef('');
   const ghlContactToken = useRef('');
@@ -324,7 +263,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
         const validViews: View[] = squeeze ? ['squeeze', 'quiz', 'contact', 'booking'] : ['intro', 'quiz', 'name', 'company', 'contact', 'booking'];
         if (validViews.includes(draft.view)) {
           if (draft.answers && typeof draft.answers === 'object') { setAnswers(draft.answers); latestAnswers.current = draft.answers; }
-          if (draft.contact && typeof draft.contact === 'object') setContact(current => ({ ...current, ...draft.contact, website: '' }));
+          if (draft.contact && typeof draft.contact === 'object') setContact(current => ({ ...current, ...draft.contact,
+            phone: normaliseSavedPhone(String(draft.contact.phone || ''), String(draft.contact.countryCode || '+44')), website: '' }));
           if (Number.isInteger(draft.questionIndex)) setQuestionIndex(Math.max(0, Math.min(questions.length - 1, draft.questionIndex)));
           if (draft.view !== 'booking' || draft.result) {
             setView(draft.view);
@@ -356,13 +296,9 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
           const restored = saved.answers as Partial<Answers>;
           latestAnswers.current = restored;
           setAnswers(restored);
-          const phone = String(saved.phone || '').replace(/\D/g, '');
-          const country = [...countryCodes].sort((a, b) => String(b.phone[0] || '').length - String(a.phone[0] || '').length)
-            .find(item => item.phone.some(code => phone.startsWith(String(code))));
-          const countryCode = `+${country?.phone.find(code => phone.startsWith(String(code))) || 44}`;
           setContact(current => ({ ...current, firstName: saved.firstName || '', lastName: saved.lastName || '',
-            email: saved.email || '', company: saved.company || '', countryCode, countryIso: country?.iso || 'GB',
-            phone: phone.slice(countryCode.length - 1), website: '' }));
+            email: saved.email || '', company: saved.company || '',
+            phone: normaliseSavedPhone(String(saved.phone || '')), website: '' }));
           ghlContactId.current = resumeContactId;
           ghlContactToken.current = resumeToken;
           localStorage.setItem(`pb_ghl_contact_${validCandidate}`, JSON.stringify({ contactId: resumeContactId, contactToken: resumeToken }));
@@ -434,7 +370,41 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const firstName = contact.firstName.trim();
   const lastName = contact.lastName.trim();
   const fullName = [firstName, lastName].filter(Boolean).join(' ');
-  const fullPhone = contact.countryCode + contact.phone.replace(/\D/g, '').replace(/^0+/, '');
+  const fullPhone = contact.phone;
+  const phoneField = <div className="phone-input">
+    <IntlTelInput
+      ref={phoneInputRef}
+      value={contact.phone}
+      initialCountry="gb"
+      countryOrder={['gb', 'us']}
+      countrySearch
+      separateDialCode
+      allowedNumberTypes={null}
+      loadUtils={() => import('intl-tel-input/utils')}
+      classNames={{ container: 'international-phone-field' }}
+      inputProps={{ required: true, autoComplete: 'tel', 'aria-label': 'Phone number' }}
+      onChangeNumber={phone => setContact(current => current.phone === phone ? current : { ...current, phone })}
+      onChangeCountry={iso => {
+        const dialCode = phoneInputRef.current?.getInstance()?.getSelectedCountry()?.dialCode;
+        setContact(current => ({ ...current, countryIso: iso.toUpperCase(), countryCode: dialCode ? `+${dialCode}` : current.countryCode }));
+      }}
+    />
+    <small className="phone-country-label">{contact.countryIso === 'GB' ? 'UK' : contact.countryIso} · {contact.countryCode}</small>
+  </div>;
+  useEffect(() => {
+    if (view !== 'squeeze' && view !== 'contact') return;
+    const input = phoneInputRef.current?.getInstance();
+    void input?.promise.then(() => {
+      const selected = input.getSelectedCountry();
+      if (!selected?.dialCode) return;
+      setContact(current => {
+        const countryIso = selected.iso2.toUpperCase();
+        const countryCode = `+${selected.dialCode}`;
+        return current.countryIso === countryIso && current.countryCode === countryCode
+          ? current : { ...current, countryIso, countryCode };
+      });
+    });
+  }, [view, contact.phone]);
   const confirmedUrl = useMemo(() => {
     const params = new URLSearchParams({
       pb_submission_id: submissionId.current,
@@ -502,15 +472,33 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     track('sales_leak_company_step_complete');
   }
 
+  async function validatedPhone() {
+    const input = phoneInputRef.current?.getInstance();
+    if (!input) { setError('Phone input is still loading. Please try again.'); return null; }
+    await input.promise;
+    if (!input.isValidNumber()) {
+      const reason = input.getValidationError();
+      setError(reason === 'TOO_SHORT' ? 'That phone number is too short for the selected country.'
+        : reason === 'TOO_LONG' ? 'That phone number is too long for the selected country.'
+        : 'Enter a valid phone number for the selected country.');
+      phoneInputRef.current?.getInput()?.focus();
+      return null;
+    }
+    return input.getNumber();
+  }
+
   async function saveSqueeze(event: FormEvent) {
     event.preventDefault();
     setError('');
+    const phone = await validatedPhone();
+    if (!phone) return;
+    setContact(current => ({ ...current, phone }));
     if (!preview) {
       setBusy(true);
       try {
         const response = await fetch('/api/leads/contact', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: submissionId.current, name: fullName, email: contact.email, phone: fullPhone, consent: contact.consent, marketing: false, website: contact.website }),
+          body: JSON.stringify({ id: submissionId.current, name: fullName, email: contact.email, phone, consent: contact.consent, marketing: false, website: contact.website }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'We couldn’t save your contact details. Please try again.');
@@ -532,8 +520,11 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   async function saveContact(event: FormEvent) {
     event.preventDefault();
     setError('');
+    const phone = await validatedPhone();
+    if (!phone) return;
+    setContact(current => ({ ...current, phone }));
     track('sales_leak_contact_step_complete');
-    await submit();
+    await submit(phone);
   }
 
   function selectAnswer(id: QuestionId, value: string) {
@@ -584,13 +575,13 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     advanceQuestion();
   }
 
-  async function submit() {
+  async function submit(phone = fullPhone) {
     setBusy(true);
     try {
       await progressQueue.current.catch(() => {});
       const response = await fetch('/api/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: submissionId.current, answers, ...contact, name: fullName, phone: fullPhone, marketing: false, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),
+        body: JSON.stringify({ id: submissionId.current, answers, ...contact, name: fullName, phone, marketing: false, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'We couldn’t prepare your result. Please try again.');
@@ -685,8 +676,9 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <label><span>First name *</span><input required minLength={2} autoFocus autoComplete="given-name" value={contact.firstName} onChange={e => setContact({...contact, firstName:e.target.value})} placeholder="e.g. David" /></label>
                 <label><span>Last name *</span><input required minLength={2} autoComplete="family-name" value={contact.lastName} onChange={e => setContact({...contact, lastName:e.target.value})} placeholder="e.g. Smith" /></label>
                 <label><span>Email *</span><input required type="email" autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="you@company.co.uk" /></label>
-                <label><span>Phone *</span><span className="phone-input"><CountryCodePicker value={contact.countryCode} iso={contact.countryIso} onChange={country => setContact({...contact, countryCode:`+${country.phone[0]}`, countryIso:country.iso})}/><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
+                <label><span>Phone *</span>{phoneField}</label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
+                {error && <p className="form-error" role="alert">{error}</p>}
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Saving your details…' : <>Start my assessment <ArrowRight size={19}/></>}</button>
                 <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
               </form>
@@ -815,7 +807,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
               <h1 ref={headingRef} tabIndex={-1}>See where {contact.company || 'your business'} is losing sales.</h1>
               <form className="details-form" onSubmit={saveContact}>
                 <label><span>Email *</span><input required type="email" autoFocus autoComplete="email" value={contact.email} onChange={e => setContact({...contact, email:e.target.value})} placeholder="e.g. david@company.co.uk" /></label>
-                <label><span>Phone *</span><span className="phone-input"><CountryCodePicker value={contact.countryCode} iso={contact.countryIso} onChange={country => setContact({...contact, countryCode:`+${country.phone[0]}`, countryIso:country.iso})}/><input required type="tel" minLength={7} maxLength={18} autoComplete="tel-national" value={contact.phone} onChange={e => setContact({...contact, phone:e.target.value})} placeholder="7700 900123" /></span></label>
+                <label><span>Phone *</span>{phoneField}</label>
                 <label className="honey" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={contact.website} onChange={e => setContact({...contact, website:e.target.value})}/></label>
                 {error && <p className="form-error" role="alert">{error}</p>}
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Preparing your result…' : 'YES! I WANT TO FIX MY CLOSE RATE'}{!busy && <ArrowRight size={19}/>}</button>

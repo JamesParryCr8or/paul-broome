@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Cormorant_Garamond, Manrope } from 'next/font/google';
+import 'intl-tel-input/styles';
 import './globals.css';
 import './readability.css';
 

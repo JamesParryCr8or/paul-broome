@@ -70,6 +70,13 @@ export function isTrustedRequestOrigin(request: Request) {
     return trusted.has(origin);
 }
 function customFields(values: Record<string,string>, fields: Record<string,string>) { return Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key,id]) => ({id,fieldValue:values[key]})); }
+function leadNames(lead: Lead) {
+    const firstName = lead.firstName?.trim();
+    const lastName = lead.lastName?.trim();
+    if (firstName || lastName) return { firstName: firstName || undefined, lastName: lastName || undefined };
+    const names = lead.name.trim().split(/\s+/).filter(Boolean);
+    return { firstName: names[0] || undefined, lastName: names.slice(1).join(' ') || undefined };
+}
 async function enrolGhlWorkflow(contactId: string, workflowId: string) {
     const token = ghlToken();
     // HighLevel requires an explicit numeric timezone offset for this field.
@@ -98,11 +105,11 @@ async function upsertGhl(name: string, email: string, phone: string, company: st
 async function updateGhl(contactId: string, lead: Lead) {
     const token = ghlToken();
     if (!token) throw new Error('CRM not configured');
-    const names = lead.name.trim().split(/\s+/).filter(Boolean);
+    const names = leadNames(lead);
     const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
     const response = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(contactId)}`, {
         method:'PUT', headers:{Authorization:`Bearer ${token}`,Version:'v3','Content-Type':'application/json'},
-        body:JSON.stringify({firstName:names[0],lastName:names.slice(1).join(' '),email:lead.email,phone:lead.phone,companyName:lead.company||undefined,source:'Paul Broome Sales Leak Assessment',customFields:customFields(values,assessmentGhlFields)}),
+        body:JSON.stringify({firstName:names.firstName,lastName:names.lastName,email:lead.email,phone:lead.phone,companyName:lead.company||undefined,source:'Paul Broome Sales Leak Assessment',customFields:customFields(values,assessmentGhlFields)}),
         signal:AbortSignal.timeout(12000),
     });
     if (!response.ok) {
@@ -192,7 +199,8 @@ async function addGhlTag(contactId: string, tag = funnelTag) {
 }
 export async function syncLeadDirect(lead: Lead, origin: string, existingContactId?: string) {
     const values = Object.fromEntries(Object.entries(lead.answers as Answers).map(([key,value])=>[key,label(key as QuestionId,value)]));
-    const contactId = existingContactId ? await updateGhl(existingContactId,lead) : await upsertGhl(lead.name,lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
+    const names = leadNames(lead);
+    const contactId = existingContactId ? await updateGhl(existingContactId,lead) : await upsertGhl([names.firstName,names.lastName].filter(Boolean).join(' '),lead.email,lead.phone,lead.company,'Paul Broome Sales Leak Assessment',values,assessmentGhlFields);
     if (!existingContactId) console.info('[ghl] assessment contact upserted', { contactId });
     await addGhlTag(contactId);
     await updateAssessmentProgress(contactId, lead.id, lead.answers, 'booking', origin, Boolean(existingContactId));
@@ -247,14 +255,14 @@ export async function syncLead(id: string) {
         const fields: Record<string, string> = JSON.parse(process.env.GHL_CUSTOM_FIELDS || '{}');
         const values: Record<string, string> = { submission_id: id, lead_score: String(result.score), lead_tier: result.tier, lead_route: result.route, marketing_consent: String(lead.marketing), enquiry_consent: 'true', consent_version: '2026-09-11-v1', consent_at: new Date(row.created_at).toISOString(), ...Object.fromEntries(Object.entries(a).map(([k, v]) => [k, label(k as QuestionId, v)])), ...lead.attribution };
         const customFields = Object.entries(fields).filter(([key]) => values[key] !== undefined).map(([key, fieldId]) => ({ id: fieldId, fieldValue: values[key] }));
-        const names = lead.name.trim().split(/\s+/);
+        const names = leadNames(lead);
         const updateExisting = Boolean(row.ghl_contact_id);
         const response = await fetch(updateExisting
             ? `https://services.leadconnectorhq.com/contacts/${encodeURIComponent(row.ghl_contact_id)}`
             : 'https://services.leadconnectorhq.com/contacts/upsert', {
             method: updateExisting ? 'PUT' : 'POST',
             headers: { Authorization: `Bearer ${ghlToken()}`, Version: updateExisting ? 'v3' : '2021-07-28', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...(!updateExisting ? { locationId: process.env.GHL_LOCATION_ID } : {}), firstName: names[0], lastName: names.slice(1).join(' '), companyName: lead.company, email: lead.email, phone: lead.phone, source: 'Paul Broome Sales Leak Assessment', customFields }),
+            body: JSON.stringify({ ...(!updateExisting ? { locationId: process.env.GHL_LOCATION_ID } : {}), firstName: names.firstName, lastName: names.lastName, companyName: lead.company, email: lead.email, phone: lead.phone, source: 'Paul Broome Sales Leak Assessment', customFields }),
             signal: AbortSignal.timeout(12000),
         });
         if (!response.ok)
