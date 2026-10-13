@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { POST as start } from '../app/api/phone-verification/start/route';
 import { POST as check } from '../app/api/phone-verification/check/route';
 import { POST as saveContact } from '../app/api/leads/contact/route';
-import { signPhoneProof, verifyPhoneProof } from '../lib/phone-verification';
+import { phoneVerificationEnabled, signPhoneProof, verifyPhoneProof } from '../lib/phone-verification';
 
 const id = '095e903d-b4ca-435c-8a1d-2007548b68c1';
 const phone = '+447700900123';
@@ -30,6 +30,23 @@ test('SMS proof is bound to the submission and phone, expires, and rejects tampe
     assert.equal(verifyPhoneProof(id, phone, proof, now + 30 * 60 * 1000 + 1), false);
   } finally {
     (['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_VERIFY_SERVICE_SID'] as const).forEach((name, index) => {
+      if (previous[index] === undefined) delete process.env[name];
+      else process.env[name] = previous[index];
+    });
+  }
+});
+
+test('Twilio function-template environment names enable verification', () => {
+  const names = ['ACCOUNT_SID', 'AUTH_TOKEN', 'VERIFY_SERVICE_SID'] as const;
+  const previous = names.map(name => process.env[name]);
+  process.env.ACCOUNT_SID = 'ACtest';
+  process.env.AUTH_TOKEN = 'test-secret';
+  process.env.VERIFY_SERVICE_SID = 'VAtest';
+  try {
+    assert.equal(phoneVerificationEnabled(), true);
+    assert.equal(verifyPhoneProof(id, phone, signPhoneProof(id, phone)), true);
+  } finally {
+    names.forEach((name, index) => {
       if (previous[index] === undefined) delete process.env[name];
       else process.env[name] = previous[index];
     });

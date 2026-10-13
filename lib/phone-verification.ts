@@ -3,13 +3,15 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const proofLifetimeMs = 30 * 60 * 1000;
 
 export function phoneVerificationEnabled() {
-  return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SERVICE_SID);
+  return Boolean((process.env.TWILIO_ACCOUNT_SID || process.env.ACCOUNT_SID)
+    && (process.env.TWILIO_AUTH_TOKEN || process.env.AUTH_TOKEN)
+    && (process.env.TWILIO_VERIFY_SERVICE_SID || process.env.VERIFY_SERVICE_SID));
 }
 
 function configuration() {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+  const accountSid = process.env.TWILIO_ACCOUNT_SID || process.env.ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN || process.env.AUTH_TOKEN;
+  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID || process.env.VERIFY_SERVICE_SID;
   if (!accountSid || !authToken || !serviceSid) throw new Error('Twilio Verify is not configured');
   return { accountSid, authToken, serviceSid };
 }
