@@ -767,7 +767,7 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Checking…' : <>Verify and continue <ArrowRight size={19}/></>}</button>
               </form>
               <div className="verification-actions">
-                <button className="back-link" type="button" onClick={back} disabled={busy}><ArrowLeft size={16}/> Change number</button>
+                <button className="verification-change-number" type="button" onClick={back} disabled={busy}><ArrowLeft size={17}/> Change phone number</button>
                 <button className="back-link" type="button" onClick={() => { void resendPhoneCode(); }} disabled={busy}>Send a new code</button>
               </div>
             </div>
