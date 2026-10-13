@@ -66,6 +66,8 @@ Copy `.env.example` into the appropriate environment and configure:
 
 For direct API sync and durable server-side history, apply `database/schema.sql` to a private Postgres database before enabling capture. Alternatively, `GHL_WEBHOOK` can receive the assessment and every diagnostic progress save without a database. The API validates the payload, checks origin and content type, limits request size and uses a honeypot. Database-backed capture additionally hashes payloads for idempotency and applies a persistent fixed-window throttle.
 
+To require an SMS code before either funnel saves a contact, create a Twilio Verify Service with the SMS channel enabled and set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID` as server-side environment variables. Redeploy after adding them. Without all three, the existing contact flow remains active. With all three, the contact and assessment APIs reject submissions without a short-lived proof bound to that submission ID and phone number. The code is checked by Twilio; neither the code nor proof is saved in the assessment draft or resume URL. Configure Twilio Verify's rate limits, fraud controls, country permissions, and billing before enabling it on production traffic.
+
 ## GoHighLevel fields
 
 The lead is upserted with name, company, email and phone. Create and map custom fields as needed:

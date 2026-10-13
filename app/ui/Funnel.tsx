@@ -14,7 +14,7 @@ import {
 import { assess, questions, type Answers, type QuestionId } from '@/lib/quiz';
 import { trackLeadOnce } from '@/lib/lead-tracking';
 
-type View = 'intro' | 'squeeze' | 'name' | 'company' | 'quiz' | 'contact' | 'booking';
+type View = 'intro' | 'squeeze' | 'name' | 'company' | 'quiz' | 'contact' | 'phone-verify' | 'booking';
 type Result = { preview: boolean; route: 'training'; score: number; tier: string; nextStepUrl?: string };
 type Contact = { firstName: string; lastName: string; company: string; countryCode: string; countryIso: string; phone: string; email: string; consent: boolean; marketing: boolean; website: string };
 
@@ -227,6 +227,9 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
   const [busy, setBusy] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [error, setError] = useState('');
+  const [verificationPhone, setVerificationPhone] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const phoneProof = useRef('');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const calendarFrameRef = useRef<HTMLIFrameElement>(null);
   const phoneInputRef = useRef<IntlTelInputRef>(null);
@@ -260,14 +263,14 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
       localStorage.setItem(LEAD_ID_KEY, submissionId.current);
       const draft = JSON.parse(localStorage.getItem(`${ASSESSMENT_DRAFT_PREFIX}${submissionId.current}`) || 'null');
       if (draft?.funnel === (squeeze ? 'squeeze' : 'homepage') && Date.now() - draft.savedAt < 30 * 86400000) {
-        const validViews: View[] = squeeze ? ['squeeze', 'quiz', 'contact', 'booking'] : ['intro', 'quiz', 'name', 'company', 'contact', 'booking'];
+        const validViews: View[] = squeeze ? ['squeeze', 'quiz', 'contact', 'phone-verify', 'booking'] : ['intro', 'quiz', 'name', 'company', 'contact', 'phone-verify', 'booking'];
         if (validViews.includes(draft.view)) {
           if (draft.answers && typeof draft.answers === 'object') { setAnswers(draft.answers); latestAnswers.current = draft.answers; }
           if (draft.contact && typeof draft.contact === 'object') setContact(current => ({ ...current, ...draft.contact,
             phone: normaliseSavedPhone(String(draft.contact.phone || ''), String(draft.contact.countryCode || '+44')), website: '' }));
           if (Number.isInteger(draft.questionIndex)) setQuestionIndex(Math.max(0, Math.min(questions.length - 1, draft.questionIndex)));
           if (draft.view !== 'booking' || draft.result) {
-            setView(draft.view);
+            setView(draft.view === 'phone-verify' ? (squeeze ? 'squeeze' : 'contact') : draft.view);
             if (draft.result) setResult(draft.result);
           }
         }
@@ -493,12 +496,17 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     const phone = await validatedPhone();
     if (!phone) return;
     setContact(current => ({ ...current, phone }));
+    if (await requestPhoneCode(phone)) return;
+    await saveSqueezeDetails(phone);
+  }
+
+  async function saveSqueezeDetails(phone: string, proof = '') {
     if (!preview) {
       setBusy(true);
       try {
         const response = await fetch('/api/leads/contact', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: submissionId.current, name: fullName, email: contact.email, phone, consent: contact.consent, marketing: false, website: contact.website }),
+          body: JSON.stringify({ id: submissionId.current, name: fullName, email: contact.email, phone, phoneProof: proof, consent: contact.consent, marketing: false, website: contact.website }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'We couldn’t save your contact details. Please try again.');
@@ -524,7 +532,57 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     if (!phone) return;
     setContact(current => ({ ...current, phone }));
     track('sales_leak_contact_step_complete');
+    if (await requestPhoneCode(phone)) return;
     await submit(phone);
+  }
+
+  async function requestPhoneCode(phone: string): Promise<boolean> {
+    if (preview) return false;
+    setBusy(true);
+    try {
+      const response = await fetch('/api/phone-verification/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: submissionId.current, phone }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'We couldn’t send the code. Please try again.');
+      if (!data.enabled) return false;
+      phoneProof.current = '';
+      setVerificationPhone(phone);
+      setVerificationCode('');
+      setView('phone-verify');
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'We couldn’t send the code. Please try again.');
+      return true;
+    } finally { setBusy(false); }
+  }
+
+  async function verifyPhoneCode(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      if (!phoneProof.current) {
+        const response = await fetch('/api/phone-verification/check', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: submissionId.current, phone: verificationPhone, code: verificationCode.trim() }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'That code could not be checked. Please try again.');
+        phoneProof.current = data.proof;
+      }
+      if (squeeze) await saveSqueezeDetails(verificationPhone, phoneProof.current);
+      else await submit(verificationPhone, phoneProof.current);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'We couldn’t check the code. Please try again.');
+    } finally { setBusy(false); }
+  }
+
+  async function resendPhoneCode() {
+    setError('');
+    phoneProof.current = '';
+    await requestPhoneCode(verificationPhone);
   }
 
   function selectAnswer(id: QuestionId, value: string) {
@@ -575,13 +633,13 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
     advanceQuestion();
   }
 
-  async function submit(phone = fullPhone) {
+  async function submit(phone = fullPhone, proof = '') {
     setBusy(true);
     try {
       await progressQueue.current.catch(() => {});
       const response = await fetch('/api/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: submissionId.current, answers, ...contact, name: fullName, phone, marketing: false, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),
+        body: JSON.stringify({ id: submissionId.current, answers, ...contact, name: fullName, phone, phoneProof: proof, marketing: false, contactId: ghlContactId.current || undefined, contactToken: ghlContactToken.current || undefined, attribution: attribution.current }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'We couldn’t prepare your result. Please try again.');
@@ -607,7 +665,8 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
 
   function back() {
     setError('');
-    if (view === 'name') { setQuestionIndex(1); setView('quiz'); }
+    if (view === 'phone-verify') { phoneProof.current = ''; setView(squeeze ? 'squeeze' : 'contact'); }
+    else if (view === 'name') { setQuestionIndex(1); setView('quiz'); }
     else if (view === 'company') setView('name');
     else if (view === 'quiz' && questionIndex === 0) setView(squeeze ? 'squeeze' : 'intro');
     else if (view === 'quiz' && !squeeze && questionIndex === 2) setView('company');
@@ -682,6 +741,35 @@ export default function Funnel({ preview, squeeze = false }: { preview: boolean;
                 <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Saving your details…' : <>Start my assessment <ArrowRight size={19}/></>}</button>
                 <label className="check-row"><input required type="checkbox" checked={contact.consent} onChange={e => setContact({...contact, consent:e.target.checked})}/><span>Paul Broome Sales Mastery may contact me about my assessment and enquiry.</span></label>
               </form>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {view === 'phone-verify' && (
+        <section className="assessment-shell">
+          <Progress current={squeeze ? 1 : totalSteps} total={totalSteps}/>
+          <div className="split-card details-layout">
+            <aside className="context-panel">
+              <div className="mini-visual"><RevenueLeakGraphic /></div>
+              <p className="step-label">One quick check</p>
+              <h2>Keep your assessment connected to you.</h2>
+              <p>We’ll check your number before saving your details and continuing.</p>
+              <div className="secure-note"><LockKeyhole size={17}/><span>Your code is only used to verify this phone number.</span></div>
+            </aside>
+            <div className="form-panel">
+              <p className="eyebrow compact"><span/> VERIFY YOUR PHONE</p>
+              <h1 ref={headingRef} tabIndex={-1}>Enter the code we sent you.</h1>
+              <p className="squeeze-lead">We sent a text message to <strong>{verificationPhone}</strong>. Enter the code to continue.</p>
+              <form className="details-form single-field-form" onSubmit={verifyPhoneCode}>
+                <label><span>SMS code *</span><input required autoFocus inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{4,10}" maxLength={10} value={verificationCode} onChange={event => setVerificationCode(event.target.value.replace(/\D/g, ''))} placeholder="Enter your code" /></label>
+                {error && <p className="form-error" role="alert">{error}</p>}
+                <button className="primary-cta" type="submit" disabled={busy}>{busy ? 'Checking…' : <>Verify and continue <ArrowRight size={19}/></>}</button>
+              </form>
+              <div className="verification-actions">
+                <button className="back-link" type="button" onClick={back} disabled={busy}><ArrowLeft size={16}/> Change number</button>
+                <button className="back-link" type="button" onClick={() => { void resendPhoneCode(); }} disabled={busy}>Send a new code</button>
+              </div>
             </div>
           </div>
         </section>

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { leadSchema, assess, type Answers } from '@/lib/quiz';
 import { db, diagnosticResumeUrl, hasGhlDirectSync, isTrustedRequestOrigin, publicNextStep, sendGhlWebhook, syncLead, syncLeadDirect, verifyGhlContactId } from '@/lib/server';
 import { emailVerificationAllowed, verifyGhlEmail } from '@/lib/email-verification';
+import { phoneVerificationEnabled, verifyPhoneProof } from '@/lib/phone-verification';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 export async function POST(request: Request) {
@@ -50,6 +51,8 @@ export async function POST(request: Request) {
     const assessment = assess(lead.answers as Answers);
     if (process.env.LEAD_CAPTURE_ENABLED !== 'true')
         return Response.json({ preview: true, ...assessment, nextStepUrl: publicNextStep() });
+    if (!contactId && phoneVerificationEnabled() && !verifyPhoneProof(lead.id, lead.phone, capture.phoneProof))
+        return Response.json({ error: 'Please verify your phone number before continuing.' }, { status: 403 });
     const hasDatabase = Boolean(process.env.DATABASE_URL);
     const hasWebhook = Boolean(process.env.GHL_WEBHOOK);
     const hasDirectSync = hasGhlDirectSync();

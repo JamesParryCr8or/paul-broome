@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createSqueezeGhlContact, hasGhlDirectSync, isTrustedRequestOrigin, signGhlContactId } from '@/lib/server';
 import { phoneSchema } from '@/lib/phone';
 import { emailVerificationAllowed, verifyGhlEmail } from '@/lib/email-verification';
+import { phoneVerificationEnabled, verifyPhoneProof } from '@/lib/phone-verification';
 
 export const runtime = 'nodejs';
 export const maxDuration = 20;
@@ -26,6 +27,8 @@ export async function POST(request: Request) {
     ? 'Enter a valid email address.' : parsed.error.issues.some(issue => issue.path[0] === 'phone')
       ? 'Enter a valid phone number for the selected country.' : 'Please check your contact details and consent, then try again.' }, { status: 400 });
   if (process.env.LEAD_CAPTURE_ENABLED !== 'true') return Response.json({ preview: true });
+  if (phoneVerificationEnabled() && !verifyPhoneProof(parsed.data.id, parsed.data.phone, (payload as Record<string, unknown>).phoneProof))
+    return Response.json({ error: 'Please verify your phone number before continuing.' }, { status: 403 });
   if (!hasGhlDirectSync()) return Response.json({ error: 'Enquiries are temporarily unavailable. Please try again shortly.' }, { status: 503 });
   try {
     if (!await emailVerificationAllowed(request))
